@@ -1762,8 +1762,7 @@ class ssm:
 
     def preparPoints_tibia(self):
         Points = self.Femur_list[0:11]
-        self.Femur_list = np.delete(self.Femur_list, 9, 0)
-        self.Femur_list = np.delete(self.Femur_list, 9, 0)
+
         self.TibiaPoints = ['胫骨隆凸', '内侧高点', '外侧高点', '内侧边缘','外侧边缘','胫骨结节','结节上侧边缘','结节内侧边缘', '结节外侧边缘']
 
         self.keypoints = Points[0:9].copy()
@@ -1772,6 +1771,8 @@ class ssm:
             point.AddPoints(self.keypoints[i].copy())
         point1 = self.myScene.AddMarkups('踝穴中心')
         point1.AddPoints((Points[9]+Points[10])/2)
+        self.Femur_list = np.delete(self.Femur_list, 9, 0)
+        self.Femur_list = np.delete(self.Femur_list, 9, 0)
         # if self.judge == 'L':
         #     self.keypoints[:, 0] = -self.keypoints[:, 0]
         #     self.Femur_list[:, 0] = -self.Femur_list[:, 0]

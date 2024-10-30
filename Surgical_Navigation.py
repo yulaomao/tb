@@ -333,8 +333,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         femurTransBaseTibia=slicer.util.arrayFromTransformMatrix(femurTransBaseTibiaNode)
         FemurCutTransRealToBone=np.dot(femurTransBaseTibia,FemurCutTransRealToBone)
 
-
-
+        
         femurJtTransNode=slicer.util.getNode('FemurJTTransNode')
         femurJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(FemurCutTransRealToBone))
         self.getLinePoints(1)
@@ -892,6 +891,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.last_minZOuter = minZOuter
             if abs(angle[0])<5:
                 if self.isDrawFinished():
+                    
                     self.pause_paint()
             else:
                 self.draw_time=0

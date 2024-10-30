@@ -60,7 +60,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.lineactor_left = rendereractor()
         self.lineactor_right = rendereractor()
 
-        self.state = 1 #三种绘制3D 窗口中线的状态0，1，2
         self.cutStatue=0 #截骨状态0(不截骨)，1（胫骨），2（股骨）
         self.last_angle = None
         self.last_minZInner = 0
@@ -115,7 +114,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.femurTransBaseTibiaNode=None
         self.setUpAll3DView()
 
-        #self.draw_line_actor(self.point_left_dict, self.point_right_dict)
 
         # Connections
     def enter(self) -> None:
@@ -126,8 +124,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.onEnterNavigation()
         self.getLinePoints(0)
         
-    def set_state(self, state):
-        self.state = state
+
 
     def setUpAll3DView(self):
         """
@@ -326,15 +323,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
         FemurCutNode=slicer.util.getNode('djpoint_Transform')
         FemurCutTrans=slicer.util.arrayFromTransformMatrix(FemurCutNode)
-        cutTransBaseCutTool=np.array([[ 4.06199092e-01, -9.13750259e-01, -7.92230749e-03,
-                                9.00000000e+01],
-                            [-7.36685277e-02, -2.41046349e-02, -9.96991432e-01,
-                                0.00000000e+00],
-                            [ 9.10810214e-01,  4.05560639e-01, -7.71059171e-02,
-                                -4.00000000e+01],
-                            [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
-                                1.00000000e+00]])
-        FemurCutTrans=np.dot(FemurCutTrans,cutTransBaseCutTool)
         FemurCutTransReal=np.dot(FemurToOriginTrans,FemurCutTrans)
         # 再按一定规则获取变换
         FemurCutTransRealToBone=self.caculateFirstTransform(FemurCutTransReal)
@@ -365,15 +353,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
         FemurCutNode=slicer.util.getNode('djpoint_Transform')
         FemurCutTrans=slicer.util.arrayFromTransformMatrix(FemurCutNode)
-        cutTransBaseCutTool=np.array([[ 4.06199092e-01, -9.13750259e-01, -7.92230749e-03,
-                                9.00000000e+01],
-                            [-7.36685277e-02, -2.41046349e-02, -9.96991432e-01,
-                                0.00000000e+00],
-                            [ 9.10810214e-01,  4.05560639e-01, -7.71059171e-02,
-                                -4.00000000e+01],
-                            [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
-                                1.00000000e+00]])
-        FemurCutTrans=np.dot(FemurCutTrans,cutTransBaseCutTool)
         FemurCutTransReal=np.dot(FemurToOriginTrans,FemurCutTrans)
         # 再按一定规则获取变换
         FemurCutTransRealToBone=self.caculateSecondTransform(FemurCutTransReal)
@@ -447,12 +426,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
                                 [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]])
             FemurTransBaseTibiaNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(Transform))
 
-            # 设置股骨假体变换节点的父级为空
-            FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
-            FemurJTTransNode.SetAndObserveTransformNodeID(None)
-
-
-
 
         else:
             # 退出截骨模式
@@ -469,12 +442,14 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             TibiaJTTransNode=slicer.util.getNode('TibiaJTTransNode')
             TibiaJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.tibiaJtTransBaseTibia))
             TibiaJTTransNode.SetAndObserveTransformNodeID(None)
-            
+
             # 进行计算以更新数值显示及曲线图
             self.caculateTibiaInf()
             self.caculateFemurInfFirst()
             self.caculateFemurInfSecond()
 
+            
+            
             
             
 
@@ -748,8 +723,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
     def getLinePoints(self,type):
         if type==0:
             
-            # 胫骨第一截骨线
-            self.state = 1
             SideLinePoint1=self.tibiaCutSideLineNode.GetNthControlPointPositionWorld(0)
             SideLinePoint2=self.tibiaCutSideLineNode.GetNthControlPointPositionWorld(1)
             FrontLinePoint1=self.tibiaCutFrontLineNode.GetNthControlPointPositionWorld(0)
@@ -773,7 +746,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.point_right_dict['point_downarrowpoint3d1'] = arrayPoint1
             self.point_right_dict['point_downarrowpoint3d2'] = arrayPoint2
 
-            self.draw_line_actor(self.point_left_dict, self.point_right_dict)
+            self.draw_line_actor(1,self.point_left_dict, self.point_right_dict)
 
             # 更新renderWindow
             self.threeDViews[0].threeDView().renderWindow().Render()
@@ -782,7 +755,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         elif type==1:
 
             # 股骨第一截骨线
-            self.state = 2
             FirstSideLinePoint1=self.femurFirstCutSideLineNode.GetNthControlPointPositionWorld(0)
             FirstSideLinePoint2=self.femurFirstCutSideLineNode.GetNthControlPointPositionWorld(1)
             FirstFrontLinePoint1=self.femurFirstCutFrontLineNode.GetNthControlPointPositionWorld(0)
@@ -807,7 +779,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.point_right_dict['point_downarrowpoint3d1'] = arrayPoint1
             self.point_right_dict['point_downarrowpoint3d2'] = arrayPoint2
 
-            self.draw_line_actor(self.point_left_dict, self.point_right_dict)
+            self.draw_line_actor(2,self.point_left_dict, self.point_right_dict)
 
             # 更新renderWindow
             self.threeDViews[0].threeDView().renderWindow().Render()
@@ -816,7 +788,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         elif type==2:
 
             #股骨第二截骨线
-            self.state = 3
+
             SecondSideLinePoint1=self.femurSecondCutSideLineNode.GetNthControlPointPositionWorld(0)
             SecondSideLinePoint2=self.femurSecondCutSideLineNode.GetNthControlPointPositionWorld(1)
             SecondFrontLinePoint1=self.femurSecondCutFrontLineNode.GetNthControlPointPositionWorld(0)
@@ -855,7 +827,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             # print("第一刀预设",SecondFrontLinePoint1,SecondFrontLinePoint2)
             # print("第二刀预设",ThirdFrontLinePoint1,ThirdFrontLinePoint2)
 
-            self.draw_line_actor(self.point_left_dict, self.point_right_dict)
+            self.draw_line_actor(3,self.point_left_dict, self.point_right_dict)
 
             # 更新renderWindow
             self.threeDViews[0].threeDView().renderWindow().Render()
@@ -1008,7 +980,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             if self.draw_time==0:
                 self.draw_time=nowTime
                 return False
-            if nowTime-self.draw_time>3:
+            if nowTime-self.draw_time>5:
                 self.draw_time=0
                 # 记录曲线
                 slicer.modules.kneeplane.widgetRepresentation().self().lineValues1=lineValues1
@@ -1140,9 +1112,9 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         
 
 
-    def draw_line_actor(self, point_left_dict, point_right_dict):
+    def draw_line_actor(self,type, point_left_dict, point_right_dict):
         
-        if self.state == 0:
+        if type == 0:
             # 只需要计算两个角度，不需要绘制线段
             self.lineactor_left.clear_actor_1(self.rendererList[0])
             self.lineactor_left.clear_actor_2(self.rendererList[1])
@@ -1155,7 +1127,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.viewButtonList[4].hide()
             self.verifyLabel.hide()
         
-        elif self.state == 1:
+        elif type == 1:
             self.verifyLabel.show()
             self.viewButtonList[1].hide()
             self.viewButtonList[3].show()
@@ -1191,7 +1163,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_right.draw_upward_arrow(renderer_right1, point_right_dict['point_realline3d1'])
             self.lineactor_right.draw_upward_arrow(renderer_right1, point_right_dict['point_realline3d2'])
 
-        elif self.state == 2:
+        elif type == 2:
             self.verifyLabel.show()
             self.viewButtonList[1].hide()
             self.viewButtonList[3].show()
@@ -1223,7 +1195,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_right.draw_alternating_line(renderer_right2, point_right_dict['point_presetline3d1'], point_right_dict['point_presetline3d2'])
             self.lineactor_right.draw_downward_arrow(renderer_right1, point_right_dict['point_realline3d1'])
             self.lineactor_right.draw_downward_arrow(renderer_right1, point_right_dict['point_realline3d2'])
-        elif self.state == 3:
+        elif type == 3:
             self.verifyLabel.show()
             self.viewButtonList[1].show()
             self.viewButtonList[3].show()

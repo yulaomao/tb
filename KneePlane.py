@@ -1255,21 +1255,9 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         cameraNode6.SetViewUp(0,0,1)
         for i in range(6):
             self.viewList[i].viewWidget().resetFocalPoint()
-        self.set_vtk_interaction(False)
 
-        
 
-    def set_vtk_interaction(self,enabled=True):
-        # 获取所有3D视图
-        for view in self.viewList:
-            # 获取视图的交互器
-            interactor = view.threeDView().renderWindow().GetInteractor()
-            if enabled:
-                # 启用鼠标交互
-                interactor.Enable()
-            else:
-                # 禁用鼠标交互
-                interactor.Disable()
+
 
 
 

@@ -61,6 +61,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.lineactor_right = rendereractor()
 
         self.state = 1 #三种绘制3D 窗口中线的状态0，1，2
+        self.cutStatue=0 #截骨状态0(不截骨)，1（胫骨），2（股骨）
         self.last_angle = None
         self.last_minZInner = 0
         self.last_minZOuter = 0
@@ -323,8 +324,17 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         femurTrans=slicer.util.arrayFromTransformMatrix(FemurTransNode)
         FemurToOriginTrans=np.dot(np.linalg.inv(self.FemurToRealTrans),np.linalg.inv(femurTrans))
 
-        FemurCutNode=slicer.util.getNode('FemurCutNode')
+        FemurCutNode=slicer.util.getNode('djpoint_Transform')
         FemurCutTrans=slicer.util.arrayFromTransformMatrix(FemurCutNode)
+        cutTransBaseCutTool=np.array([[ 4.06199092e-01, -9.13750259e-01, -7.92230749e-03,
+                                9.00000000e+01],
+                            [-7.36685277e-02, -2.41046349e-02, -9.96991432e-01,
+                                0.00000000e+00],
+                            [ 9.10810214e-01,  4.05560639e-01, -7.71059171e-02,
+                                -4.00000000e+01],
+                            [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+                                1.00000000e+00]])
+        FemurCutTrans=np.dot(FemurCutTrans,cutTransBaseCutTool)
         FemurCutTransReal=np.dot(FemurToOriginTrans,FemurCutTrans)
         # 再按一定规则获取变换
         FemurCutTransRealToBone=self.caculateFirstTransform(FemurCutTransReal)
@@ -333,11 +343,17 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         femurTransBaseTibia=slicer.util.arrayFromTransformMatrix(femurTransBaseTibiaNode)
         FemurCutTransRealToBone=np.dot(femurTransBaseTibia,FemurCutTransRealToBone)
 
-        
-        femurJtTransNode=slicer.util.getNode('FemurJTTransNode')
-        femurJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(FemurCutTransRealToBone))
-        self.getLinePoints(1)
-        self.caculateFemurInfFirst()
+        FemurCutTransReal_Translation=FemurCutTransRealToBone[0:3,3]
+        # 如果截骨版距离胫骨小于200mm，则认为截骨板已经到位，开启计算
+        length=np.linalg.norm(FemurCutTransReal_Translation)
+        if length<200:
+            self.onEnterCutMode(2)
+            femurJtTransNode=slicer.util.getNode('FemurJTTransNode')
+            femurJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(FemurCutTransRealToBone))
+            self.getLinePoints(1)
+            self.caculateFemurInfFirst()
+        else:
+            self.onEnterCutMode(0)
         return FemurCutTransRealToBone
 
 
@@ -347,8 +363,17 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         femurTrans=slicer.util.arrayFromTransformMatrix(FemurTransNode)
         FemurToOriginTrans=np.dot(np.linalg.inv(self.FemurToRealTrans),np.linalg.inv(femurTrans))
 
-        FemurCutNode=slicer.util.getNode('FemurCutNode')
+        FemurCutNode=slicer.util.getNode('djpoint_Transform')
         FemurCutTrans=slicer.util.arrayFromTransformMatrix(FemurCutNode)
+        cutTransBaseCutTool=np.array([[ 4.06199092e-01, -9.13750259e-01, -7.92230749e-03,
+                                9.00000000e+01],
+                            [-7.36685277e-02, -2.41046349e-02, -9.96991432e-01,
+                                0.00000000e+00],
+                            [ 9.10810214e-01,  4.05560639e-01, -7.71059171e-02,
+                                -4.00000000e+01],
+                            [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+                                1.00000000e+00]])
+        FemurCutTrans=np.dot(FemurCutTrans,cutTransBaseCutTool)
         FemurCutTransReal=np.dot(FemurToOriginTrans,FemurCutTrans)
         # 再按一定规则获取变换
         FemurCutTransRealToBone=self.caculateSecondTransform(FemurCutTransReal)
@@ -370,12 +395,12 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
         TibiaCutNode=slicer.util.getNode('djpoint_Transform')
         TibiaCutTrans=slicer.util.arrayFromTransformMatrix(TibiaCutNode)
-        cutTransBaseCutTool=np.array([[-1.19445301e-02,  9.98103135e-01, -6.03942033e-02,
-                                        -4.80000000e+01],
-                                    [ 9.13325457e-02, -5.90570269e-02, -9.94067721e-01,
-                                        -1.00000000e+00],
-                                    [-9.95748811e-01, -1.73896282e-02, -9.04538918e-02,
+        cutTransBaseCutTool=np.array([[ 4.06199092e-01, -9.13750259e-01, -7.92230749e-03,
+                                        9.00000000e+01],
+                                    [-7.36685277e-02, -2.41046349e-02, -9.96991432e-01,
                                         0.00000000e+00],
+                                    [ 9.10810214e-01,  4.05560639e-01, -7.71059171e-02,
+                                        -4.00000000e+01],
                                     [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
                                         1.00000000e+00]])
         TibiaCutTrans=np.dot(TibiaCutTrans,cutTransBaseCutTool)
@@ -384,11 +409,74 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         # 如果截骨版距离胫骨小于200mm，则认为截骨板已经到位，开启计算
         length=np.linalg.norm(TibiaCutTransReal_Translation)
         if length<200:
+            self.onEnterCutMode(1)
             tibiaJtTransNode=slicer.util.getNode('TibiaJTTransNode')
             tibiaJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.caculateFirstTransform(TibiaCutTransReal)))
             self.getLinePoints(0)
             self.caculateTibiaInf()
+        else:
+            self.onEnterCutMode(0)
 
+    # 进入或退出胫骨截骨及验证模式
+    def onEnterCutMode(self,statue):
+        if statue==self.cutStatue:
+            return
+        self.cutStatue=statue
+        if statue==1:
+            # 进入胫骨截骨模式,设置胫骨假体可见，股骨假体不可见，股骨颜色为暗灰色
+            self.FemurModel.GetDisplayNode().SetColor(0.5,0.5,0.5)
+            self.TibiaModel.GetDisplayNode().SetColor(0.9, 0.9, 0.3)
+            self.FemurJTModel.GetDisplayNode().SetVisibility(0)
+            self.TibiaJTModel.GetDisplayNode().SetVisibility(1)
+            # 使股骨屈膝0度
+            FemurTransBaseTibiaNode = slicer.util.getNode('FemurTransBaseTibia')
+            Transform=np.eye(4)
+            FemurTransBaseTibiaNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(Transform))
+
+        elif statue==2:
+            # 进入股骨截骨模式，设置股骨假体可见，胫骨假体不可见，胫骨颜色为暗灰色
+            self.FemurModel.GetDisplayNode().SetColor(0.9, 0.9, 0.3)
+            self.TibiaModel.GetDisplayNode().SetColor(0.5,0.5,0.5)
+            self.FemurJTModel.GetDisplayNode().SetVisibility(1)
+            self.TibiaJTModel.GetDisplayNode().SetVisibility(0)
+            # 使股骨屈膝90度
+            FemurTransBaseTibiaNode = slicer.util.getNode('FemurTransBaseTibia')
+            Transform = np.array([[ 1.00000000e+00,  0.00000000e+00,  0.00000000e+00, 0.00000000e+00],
+                                [ 0.00000000e+00,  2.77555756e-17, -1.00000000e+00, 2.20000000e+01],
+                                [ 0.00000000e+00,  1.00000000e+00,  2.77555756e-17, 3.50000000e+01],
+                                [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]])
+            FemurTransBaseTibiaNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(Transform))
+
+            # 设置股骨假体变换节点的父级为空
+            FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
+            FemurJTTransNode.SetAndObserveTransformNodeID(None)
+
+
+
+
+        else:
+            # 退出截骨模式
+            self.FemurModel.GetDisplayNode().SetColor(0.9, 0.9, 0.3)
+            self.TibiaModel.GetDisplayNode().SetColor(0.9, 0.9, 0.3)
+            self.FemurJTModel.GetDisplayNode().SetVisibility(1)
+            self.TibiaJTModel.GetDisplayNode().SetVisibility(1)
+            # 给股骨假体赋予变换及父级
+            FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
+            FemurJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.femurJtTransBaseFemur))
+            FemurJTTransNode.SetAndObserveTransformNodeID(self.femurTransBaseTibiaNode.GetID())
+
+            # 给胫骨假体赋予变换
+            TibiaJTTransNode=slicer.util.getNode('TibiaJTTransNode')
+            TibiaJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.tibiaJtTransBaseTibia))
+            TibiaJTTransNode.SetAndObserveTransformNodeID(None)
+            
+            # 进行计算以更新数值显示及曲线图
+            self.caculateTibiaInf()
+            self.caculateFemurInfFirst()
+            self.caculateFemurInfSecond()
+
+            
+            
 
 
     def caculateTibiaInf(self, caller=None, event=None):
@@ -463,7 +551,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             # 创建一个transformNode
             FemurCutNode=slicer.util.getNode('djpoint_Transform')
             # 添加观察者
-            FemurCutNode.AddObserver(FemurCutNode.TransformModifiedEvent, self.caculateTibiaFirstTransform)
+            FemurCutNode.AddObserver(FemurCutNode.TransformModifiedEvent, self.caculateFemurFirstTransform)
             tibiaPointNode=slicer.util.getNode('胫骨隆凸')
             tibiaPoint=tibiaPointNode.GetNthControlPointPositionWorld(0)
             # 创建一个4*4单位矩阵
@@ -517,6 +605,14 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
         FemurJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.femurJtTransBaseFemur))
         FemurJTTransNode.SetAndObserveTransformNodeID(self.femurTransBaseTibiaNode.GetID())
+
+        # 计算胫骨假体相对于胫骨的变换
+        self.tibiaJtTransBaseTibia=slicer.util.arrayFromTransformMatrix(slicer.util.getNode('TibiaTransNode'))
+        self.tibiaJtTransBaseTibia=np.linalg.inv(self.tibiaJtTransBaseTibia)
+        # 将其赋值给胫骨假体的变换
+        TibiaJTTransNode=slicer.util.getNode('TibiaJTTransNode')
+        TibiaJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.tibiaJtTransBaseTibia))
+        
         
         # 更新绘制规划的线
         self.initLineNode(1)
@@ -823,9 +919,10 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.is_pause = True
 
     def onChangeFemurTransBaseTibia(self, caller=None, event=None):
-        # 定义文件路径
-        log_file_path = os.path.join(os.path.dirname(__file__), "angle_data_log.txt")
-
+        
+        # 仅在不截骨状态下进行更新
+        if self.cutStatue != 0:
+            return
         # 计算股骨工具相对于胫骨工具的变换，用于计算股骨的变换
         FemurTransNode = slicer.util.getNode('Femurtool_Transform')
         TibiaTransNode = slicer.util.getNode('Tibiatool_Transform')
@@ -891,7 +988,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.last_minZOuter = minZOuter
             if abs(angle[0])<5:
                 if self.isDrawFinished():
-                    
                     self.pause_paint()
             else:
                 self.draw_time=0
@@ -912,7 +1008,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             if self.draw_time==0:
                 self.draw_time=nowTime
                 return False
-            if nowTime-self.draw_time>5:
+            if nowTime-self.draw_time>3:
                 self.draw_time=0
                 # 记录曲线
                 slicer.modules.kneeplane.widgetRepresentation().self().lineValues1=lineValues1
@@ -956,7 +1052,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
 
     def onChangeJTFemur(self,modelNode):
-        self.FemurModel=modelNode
+        self.FemurJTModel=modelNode
         self.onShowModel(modelNode, self.threeDViews)
         modelActor=self.getModelActor(modelNode.GetName(),self.threeDViews[0])
         self.MoveActor(modelActor,self.threeDViews[0],self.rendererList[0])
@@ -964,7 +1060,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.MoveActor(modelActor,self.threeDViews[1],self.rendererList[2])
 
     def onChangeJTTibia(self,modelNode):
-        self.TibiaModel=modelNode
+        self.TibiaJTModel=modelNode
         self.onShowModel(modelNode, self.threeDViews)
 
 

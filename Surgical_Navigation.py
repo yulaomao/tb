@@ -7,7 +7,7 @@ import numpy as np
 import qt
 import slicer.util
 import vtk
-
+import time
 import slicer
 from slicer.i18n import tr as _
 from slicer.i18n import translate
@@ -60,7 +60,13 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.lineactor_left = rendereractor()
         self.lineactor_right = rendereractor()
 
-        self.state = 1 #三种状态0，1，2
+        self.state = 1 #三种绘制3D 窗口中线的状态0，1，2
+        self.last_angle = None
+        self.last_minZInner = 0
+        self.last_minZOuter = 0
+        self.is_pause = False
+        # 绘制完成时间
+        self.draw_time = 0
 
         self.point_left_dict = {
             'point_presetline3d1': [0, 0, 0],
@@ -111,7 +117,13 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         #self.draw_line_actor(self.point_left_dict, self.point_right_dict)
 
         # Connections
-
+    def enter(self) -> None:
+        """
+        每次用户打开该模块时调用，
+        功能是初始化参数节点并确保其被观察。
+        """
+        self.onEnterNavigation()
+        self.getLinePoints(0)
         
     def set_state(self, state):
         self.state = state
@@ -135,6 +147,13 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         # 为widget_bottom设置布局
         self.widget_Top.setLayout(qt.QHBoxLayout())
         self.rendererList = []
+
+
+
+        
+
+        # 设置layout边缘间距
+        self.widget_Top.layout().setContentsMargins(0, 0, 0, 0)
 
         for i in range(2):
             # 创建 MRML 视图节点
@@ -169,13 +188,14 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
             renderWindow.Render()
 
+
+        for i in range(2):
+            self.threeDViews[i].threeDView().scheduleRender()
+
         # 设置Verifylabel位置
         self.verifyLabel = VerifyLabel(self.widget_Top)
         self.verifyLabel.setGeometry(self.widget_Top.width / 2 - 50, self.widget_Top.height / 2 - 50, 100, 100)
 
-        # 设置进度条位置
-        self.processBar = TransparentProgressBar(self.widget_Top)
-        self.processBar.setGeometry(self.widget_Top.width / 2 - 100, self.widget_Top.height / 2 + 50, 200, 20)
             
         self.viewButtonList=[]
         View1TopButton = ViewPopWidget1(1)
@@ -211,11 +231,218 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         View2BottomButton_1.setPositionByWidget(self.threeDViews[1],'bottom_right')
         View2BottomButton_1.show()
         self.viewButtonList.append(View2BottomButton_1)
+        self.onSetUpCameraPostion()
+
+
+    # 10.17 
+    # 设置相机位置
+    def onSetUpCameraPostion(self):
+        # 设置相机位置
+        cameraNode3 = self.threeDViews[0].viewWidget().cameraNode()
+        cameraNode3.SetPosition(495.7681850602074, 32.428406098246406, 56.234377)
+        cameraNode3.SetFocalPoint(0, 0, 0)
+        cameraNode3.SetViewUp(0,0,1)
+
+        cameraNode1 = self.threeDViews[1].viewWidget().cameraNode()
+        cameraNode1.SetPosition(0,500,0)
+        cameraNode1.SetFocalPoint(0, 0, 0)
+        cameraNode1.SetViewUp(0,0,1)
+
+    def rotation_matrix_to_euler_angles(self,matrix):
+        # 提取旋转部分
+        R = matrix[:3, :3]
+        
+        # 计算欧拉角
+        sy = math.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2)  # 计算sy，避免奇异情况
+
+        singular = sy < 1e-6  # 判断是否为奇异情况
+        if not singular:
+            x = math.atan2(R[2, 1], R[2, 2])  # 绕X轴的旋转
+            y = math.atan2(-R[2, 0], sy)      # 绕Y轴的旋转
+            z = math.atan2(R[1, 0], R[0, 0])  # 绕Z轴的旋转
+        else:
+            x = math.atan2(-R[1, 2], R[1, 1])  # 特殊处理
+            y = math.atan2(-R[2, 0], sy)
+            z = 0
+
+        return np.array([x, y, z])
+
+    def euler_angles_to_rotation_matrix(self,angles):
+        # 提取欧拉角
+        x, y, z = angles
+        
+        # 计算旋转矩阵
+        Rx = np.array([[1, 0, 0],
+                    [0, np.cos(x), -np.sin(x)],
+                    [0, np.sin(x), np.cos(x)]])
+        
+        Ry = np.array([[np.cos(y), 0, np.sin(y)],
+                    [0, 1, 0],
+                    [-np.sin(y), 0, np.cos(y)]])
+        
+        Rz = np.array([[np.cos(z), -np.sin(z), 0],
+                    [np.sin(z), np.cos(z), 0],
+                    [0, 0, 1]])
+        
+        return Rz @ Ry @ Rx
+
+    def caculateFirstTransform(self,matrix):
+        # 转欧拉角
+        # 获取旋转矩阵
+        R = matrix[:3, :3]
+        # 计算欧拉角
+        angles = self.rotation_matrix_to_euler_angles(R)
+        angles[2] = 0
+        # 计算新的旋转矩阵
+        R = self.euler_angles_to_rotation_matrix(angles)
+        # 创建变换矩阵
+        constrained_matrix = np.eye(4)
+        constrained_matrix[:3, :3] = R
+        constrained_matrix[2, 3] = matrix[2, 3]
+        return constrained_matrix
+
+    def caculateSecondTransform(self,matrix):
+        # 转欧拉角
+        # 获取旋转矩阵
+        R = matrix[:3, :3]
+        # 计算欧拉角
+        angles = self.rotation_matrix_to_euler_angles(R)
+        angles[0] = 0
+        angles[1] = 0
+        # 计算新的旋转矩阵
+        R = self.euler_angles_to_rotation_matrix(angles)
+        # 创建变换矩阵
+        constrained_matrix = np.eye(4)
+        constrained_matrix[:3, :3] = R
+        constrained_matrix[1, 3] = matrix[1, 3]
+        return constrained_matrix
+
+    def caculateFemurFirstTransform(self,caller=None,event=None):
+        # 获取截骨板相对于当前在原点处的股骨的变换
+        FemurTransNode=slicer.util.getNode('Femurtool_Transform')
+        femurTrans=slicer.util.arrayFromTransformMatrix(FemurTransNode)
+        FemurToOriginTrans=np.dot(np.linalg.inv(self.FemurToRealTrans),np.linalg.inv(femurTrans))
+
+        FemurCutNode=slicer.util.getNode('FemurCutNode')
+        FemurCutTrans=slicer.util.arrayFromTransformMatrix(FemurCutNode)
+        FemurCutTransReal=np.dot(FemurToOriginTrans,FemurCutTrans)
+        # 再按一定规则获取变换
+        FemurCutTransRealToBone=self.caculateFirstTransform(FemurCutTransReal)
+        # 再变换至当前相对于胫骨的位置
+        femurTransBaseTibiaNode=slicer.util.getNode('FemurTransBaseTibia')
+        femurTransBaseTibia=slicer.util.arrayFromTransformMatrix(femurTransBaseTibiaNode)
+        FemurCutTransRealToBone=np.dot(femurTransBaseTibia,FemurCutTransRealToBone)
+
+
+
+        femurJtTransNode=slicer.util.getNode('FemurJTTransNode')
+        femurJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(FemurCutTransRealToBone))
+        self.getLinePoints(1)
+        self.caculateFemurInfFirst()
+        return FemurCutTransRealToBone
+
+
+    def caculateFemurSecondTransform(self,caller=None,event=None):
+        # 获取截骨板相对于当前在原点处的股骨的变换
+        FemurTransNode=slicer.util.getNode('Femurtool_Transform')
+        femurTrans=slicer.util.arrayFromTransformMatrix(FemurTransNode)
+        FemurToOriginTrans=np.dot(np.linalg.inv(self.FemurToRealTrans),np.linalg.inv(femurTrans))
+
+        FemurCutNode=slicer.util.getNode('FemurCutNode')
+        FemurCutTrans=slicer.util.arrayFromTransformMatrix(FemurCutNode)
+        FemurCutTransReal=np.dot(FemurToOriginTrans,FemurCutTrans)
+        # 再按一定规则获取变换
+        FemurCutTransRealToBone=self.caculateSecondTransform(FemurCutTransReal)
+        # 再变换至当前相对于胫骨的位置
+        femurTransBaseTibiaNode=slicer.util.getNode('FemurTransBaseTibia')
+        femurTransBaseTibia=slicer.util.arrayFromTransformMatrix(femurTransBaseTibiaNode)
+        FemurCutTransRealToBone=np.dot(femurTransBaseTibia,FemurCutTransRealToBone)
+        femurJtTransNode=slicer.util.getNode('FemurJTTransNode')
+        femurJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(FemurCutTransRealToBone))
+        self.getLinePoints(2)
+        self.caculateFemurInfSecond()
+        return FemurCutTransRealToBone
+        
+
+    def caculateTibiaFirstTransform(self,caller=None,event=None):
+        TibiaTransNode=slicer.util.getNode('Tibiatool_Transform')
+        tibiaTrans=slicer.util.arrayFromTransformMatrix(TibiaTransNode)
+        TibiaToOriginTrans=np.dot(np.linalg.inv(self.TibiaToRealTrans),np.linalg.inv(tibiaTrans))
+
+        TibiaCutNode=slicer.util.getNode('djpoint_Transform')
+        TibiaCutTrans=slicer.util.arrayFromTransformMatrix(TibiaCutNode)
+        cutTransBaseCutTool=np.array([[-1.19445301e-02,  9.98103135e-01, -6.03942033e-02,
+                                        -4.80000000e+01],
+                                    [ 9.13325457e-02, -5.90570269e-02, -9.94067721e-01,
+                                        -1.00000000e+00],
+                                    [-9.95748811e-01, -1.73896282e-02, -9.04538918e-02,
+                                        0.00000000e+00],
+                                    [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+                                        1.00000000e+00]])
+        TibiaCutTrans=np.dot(TibiaCutTrans,cutTransBaseCutTool)
+        TibiaCutTransReal=np.dot(TibiaToOriginTrans,TibiaCutTrans)
+        TibiaCutTransReal_Translation=TibiaCutTransReal[0:3,3]
+        # 如果截骨版距离胫骨小于200mm，则认为截骨板已经到位，开启计算
+        length=np.linalg.norm(TibiaCutTransReal_Translation)
+        if length<200:
+            tibiaJtTransNode=slicer.util.getNode('TibiaJTTransNode')
+            tibiaJtTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.caculateFirstTransform(TibiaCutTransReal)))
+            self.getLinePoints(0)
+            self.caculateTibiaInf()
+
+
+
+    def caculateTibiaInf(self, caller=None, event=None):
+        if not self.is_pause:
+            return
+        inf = slicer.modules.kneeplane.widgetRepresentation().self().onCalculate()
+        indices = [9, 10, 7, 8]
+        buttons = [0, 2, 3, 4]
+        self._updateButtons(inf, indices, buttons)
+    
+    def caculateFemurInfFirst(self, caller=None, event=None):
+        if not self.is_pause:
+            return
+        inf = slicer.modules.kneeplane.widgetRepresentation().self().onCalculate()
+        indices = [5, 6, 0, 1]
+        buttons = [0, 2, 3, 4]
+        self._updateButtons(inf, indices, buttons)
+    
+    def caculateFemurInfSecond(self, caller=None, event=None):
+        if not self.is_pause:
+            return
+        inf = slicer.modules.kneeplane.widgetRepresentation().self().onCalculate()
+        indices = [5, 4, 6, 2, 3]
+        buttons = [0, 1, 2, 3, 4]
+        self._updateButtons(inf, indices, buttons)
+    
+    def _updateButtons(self, inf, indices, buttons):
+        for button_index, inf_index in zip(buttons, indices):
+            self.viewButtonList[button_index].CenterButton.setCenterNumber(int(inf[inf_index]))
+            if abs(self.planeInfo[inf_index] - inf[inf_index]) < 0.55:
+                self.viewButtonList[button_index].CenterButton.setTextColor('blue')
+            else:
+                self.viewButtonList[button_index].CenterButton.setTextColor('white')
+
+
+
+    
 
 
 
     # 进入导航模式
     def onEnterNavigation(self):
+
+
+        self.qMRML_widget = slicer.modules.kneeplane.widgetRepresentation().self().qMRML_widget
+        if self.qMRML_widget is not None:
+            self.ui.widget_4.layout().addWidget(self.qMRML_widget)
+
+
+            # 设置layout比例为2:1
+            self.ui.widget_4.layout().setStretchFactor(self.widget_Top, 2)
+            self.ui.widget_4.layout().setStretchFactor(self.qMRML_widget, 1)
+
         if (self.femurTransBaseTibiaNode==None):
             self.FemurModel=slicer.util.getNode('FemurModel')
             self.TibiaModel=slicer.util.getNode('TibiaModel')
@@ -224,13 +451,51 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             
             self.femurTransBaseTibiaNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode")
             self.femurTransBaseTibiaNode.SetName("FemurTransBaseTibia")
-            FemurTransNode=slicer.util.getNode('FemurTransNode')
+            FemurTransNode=slicer.util.getNode('Femurtool_Transform')
 
             # 添加观察者
             FemurTransNode.AddObserver(self.femurTransBaseTibiaNode.TransformModifiedEvent, self.onChangeFemurTransBaseTibia)
 
             # 创建规划的线
             self.initLineNode(0)
+            self.getFemurAndTibiaToRealTransform()
+
+            # 临时测试使用，之后删除
+            # 创建一个transformNode
+            FemurCutNode=slicer.util.getNode('djpoint_Transform')
+            # 添加观察者
+            FemurCutNode.AddObserver(FemurCutNode.TransformModifiedEvent, self.caculateTibiaFirstTransform)
+            tibiaPointNode=slicer.util.getNode('胫骨隆凸')
+            tibiaPoint=tibiaPointNode.GetNthControlPointPositionWorld(0)
+            # 创建一个4*4单位矩阵
+            matrix=np.eye(4)
+            # 将点设置在矩阵的第三列
+            matrix[0:3,3]=tibiaPoint
+            # 设置变换
+            FemurCutNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(matrix))
+            FemurCutNode.CreateDefaultDisplayNodes()
+            FemurCutNode.GetDisplayNode().SetEditorVisibility(1)
+
+            # 创建一个transformNode
+            FemurCutNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode")
+            FemurCutNode.SetName("FemurCutNode")
+            # 添加观察者
+            FemurCutNode.AddObserver(FemurCutNode.TransformModifiedEvent, self.caculateFemurSecondTransform)
+            femurPointNode=slicer.util.getNode('开髓点')
+            femurPoint=femurPointNode.GetNthControlPointPositionWorld(0)
+            # 创建一个4*4单位矩阵
+            matrix=np.eye(4)
+            # 将点设置在矩阵的第三列
+            matrix[0:3,3]=femurPoint
+            # 设置变换
+            FemurCutNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(matrix))
+            FemurCutNode.CreateDefaultDisplayNodes()
+            FemurCutNode.GetDisplayNode().SetEditorVisibility(1)
+
+        # 获取此时股骨及胫骨的假体截骨参数
+        self.planeInfo = slicer.modules.kneeplane.widgetRepresentation().self().onCalculate()
+
+
 
         # 将股骨设置在self.femurTransBaseTibiaNode下
         self.FemurModel.SetAndObserveTransformNodeID(self.femurTransBaseTibiaNode.GetID())
@@ -252,11 +517,64 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         # 将其赋值给股骨假体的变换
         FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
         FemurJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(self.femurJtTransBaseFemur))
-        # 将FemurJTTransNode设置在self.femurTransBaseTibiaNode下
         FemurJTTransNode.SetAndObserveTransformNodeID(self.femurTransBaseTibiaNode.GetID())
         
         # 更新绘制规划的线
         self.initLineNode(1)
+
+
+
+    def onEnterPlanning(self):
+
+        self.qMRML_widget = slicer.modules.surgical_navigation.widgetRepresentation().self().qMRML_widget
+        if self.qMRML_widget is not None:
+            slicer.modules.kneeplane.widgetRepresentation().self().ui.painter_Curve_widget.layout().addWidget(self.qMRML_widget)
+            
+
+        # 将股骨设置在FemurTransNode下
+        self.FemurModel.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
+        self.FemurModel.GetDisplayNode().SetVisibility(0)
+        self.TibiaModel.GetDisplayNode().SetVisibility(0)
+        # 将股骨的标志点设置在FemurTransNode下
+        femurMarkupsNode=slicer.util.getNode('FemurPoints')
+        femurMarkupsNode.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
+        LowestPointsInner=slicer.util.getNode('LowestPointsInner')
+        LowestPointsInner.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
+        LowestPointsOuter=slicer.util.getNode('LowestPointsOuter')
+        LowestPointsOuter.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
+
+
+        # 将股骨假体变换设置为单位矩阵
+        FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
+        FemurJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(np.eye(4)))
+        # 将FemurJTTransNode父级设置为空
+        FemurJTTransNode.SetAndObserveTransformNodeID(None)
+
+        # 将胫骨假体变换设置为单位矩阵
+        TibiaJTTransNode=slicer.util.getNode('TibiaJTTransNode')
+        TibiaJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(np.eye(4)))
+        # 将TibiaJTTransNode父级设置为空
+        TibiaJTTransNode.SetAndObserveTransformNodeID(None)
+
+
+    # 获取股骨和胫骨到真实位置的变换
+    def getFemurAndTibiaToRealTransform(self):
+        FemurFromPoints=slicer.util.arrayFromMarkupsControlPoints(slicer.util.getNode('FemurPoints'))[0:6]
+        TibiaFromPoints=slicer.util.arrayFromMarkupsControlPoints(slicer.util.getNode('TibiaPoints'))[0:6]
+        FemurToPointsName= ['开髓点', '内侧凹点', '外侧凸点', '内侧远端区域', '外侧远端区域', '内侧后髁区域', '外侧后髁区域', '外侧皮质高点', 'A点', 'H点']
+        FemurToPoints=[]
+        for i in range(6):
+            FemurToPoints.append(slicer.util.getNode(FemurToPointsName[i]).GetNthControlPointPosition(0))
+        TibiaToPoints=[]
+        TibiaToPointsName=['胫骨隆凸', '胫骨内侧区域', '胫骨外侧区域', '内侧边缘','外侧边缘','胫骨结节区域','结节上侧边缘','结节内侧边缘', '结节外侧边缘','内踝点','外踝点']
+        for i in range(6):
+            TibiaToPoints.append(slicer.util.getNode(TibiaToPointsName[i]).GetNthControlPointPosition(0))
+        self.FemurToRealTrans=self.registion(FemurFromPoints,FemurToPoints)
+        self.TibiaToRealTrans=self.registion(TibiaFromPoints,TibiaToPoints)
+
+
+
+
 
     def create_line_node(self,name, visibility, parent_node_id):
         line_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsLineNode")
@@ -268,10 +586,10 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
     def setLinePoints(self,node1,node2,point1,point2):
         node1.RemoveAllControlPoints()
         node2.RemoveAllControlPoints()
-        node1.AddControlPointWorld(point1)
-        node1.AddControlPointWorld(point2)
-        node2.AddControlPointWorld(point1)
-        node2.AddControlPointWorld(point2)
+        node1.AddControlPoint(point1)
+        node1.AddControlPoint(point2)
+        node2.AddControlPoint(point1)
+        node2.AddControlPoint(point2)
 
 
     # 初始化或者更新用于绘制线的节点
@@ -334,27 +652,28 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
     def getLinePoints(self,type):
         if type==0:
+            
+            # 胫骨第一截骨线
+            self.state = 1
             SideLinePoint1=self.tibiaCutSideLineNode.GetNthControlPointPositionWorld(0)
             SideLinePoint2=self.tibiaCutSideLineNode.GetNthControlPointPositionWorld(1)
             FrontLinePoint1=self.tibiaCutFrontLineNode.GetNthControlPointPositionWorld(0)
             FrontLinePoint2=self.tibiaCutFrontLineNode.GetNthControlPointPositionWorld(1)
-            realTimeSideLinePoint1=self.tibiaRealTimeCutSideLineNode.GetNthControlPointPositionWorld(0)
-            realTimeSideLinePoint2=self.tibiaRealTimeCutSideLineNode.GetNthControlPointPositionWorld(1)
-            realTimeFrontLinePoint1=self.tibiaRealTimeCutFrontLineNode.GetNthControlPointPositionWorld(0)
-            realTimeFrontLinePoint2=self.tibiaRealTimeCutFrontLineNode.GetNthControlPointPositionWorld(1)
-
+            RealTimeSideLinePoint1=self.tibiaRealTimeCutSideLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeSideLinePoint2=self.tibiaRealTimeCutSideLineNode.GetNthControlPointPositionWorld(1)
+            RealTimeFrontLinePoint1=self.tibiaRealTimeCutFrontLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeFrontLinePoint2=self.tibiaRealTimeCutFrontLineNode.GetNthControlPointPositionWorld(1)
             arrayPoint1=slicer.util.getNode('TibiaPoints').GetNthControlPointPositionWorld(1)
             arrayPoint2=slicer.util.getNode('TibiaPoints').GetNthControlPointPositionWorld(2)
-            
             self.point_left_dict['point_presetline3d1'] = SideLinePoint1
             self.point_left_dict['point_presetline3d2'] = SideLinePoint2
-            self.point_left_dict['point_realline3d1'] = realTimeSideLinePoint1
-            self.point_left_dict['point_realline3d2'] = realTimeSideLinePoint2
+            self.point_left_dict['point_realline3d1'] = RealTimeSideLinePoint1
+            self.point_left_dict['point_realline3d2'] = RealTimeSideLinePoint2
 
             self.point_right_dict['point_presetline3d1'] = FrontLinePoint1
             self.point_right_dict['point_presetline3d2'] = FrontLinePoint2
-            self.point_right_dict['point_realline3d1'] = realTimeFrontLinePoint1
-            self.point_right_dict['point_realline3d2'] = realTimeFrontLinePoint2
+            self.point_right_dict['point_realline3d1'] = RealTimeFrontLinePoint1
+            self.point_right_dict['point_realline3d2'] = RealTimeFrontLinePoint2
 
             self.point_right_dict['point_downarrowpoint3d1'] = arrayPoint1
             self.point_right_dict['point_downarrowpoint3d2'] = arrayPoint2
@@ -365,21 +684,87 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.threeDViews[0].threeDView().renderWindow().Render()
             self.threeDViews[1].threeDView().renderWindow().Render()
 
-            
         elif type==1:
+
+            # 股骨第一截骨线
+            self.state = 2
             FirstSideLinePoint1=self.femurFirstCutSideLineNode.GetNthControlPointPositionWorld(0)
             FirstSideLinePoint2=self.femurFirstCutSideLineNode.GetNthControlPointPositionWorld(1)
             FirstFrontLinePoint1=self.femurFirstCutFrontLineNode.GetNthControlPointPositionWorld(0)
             FirstFrontLinePoint2=self.femurFirstCutFrontLineNode.GetNthControlPointPositionWorld(1)
-            arrayPoint1=slicer.util.getNode('FemurPoints').GetNthControlPointPositionWorld(1)
-            arrayPoint2=slicer.util.getNode('FemurPoints').GetNthControlPointPositionWorld(2)
+            RealTimeFirstSideLinePoint1=self.femurRealTimeFirstCutSideLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeFirstSideLinePoint2=self.femurRealTimeFirstCutSideLineNode.GetNthControlPointPositionWorld(1)
+            RealTimeFirstFrontLinePoint1=self.femurRealTimeFirstCutFrontLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeFirstFrontLinePoint2=self.femurRealTimeFirstCutFrontLineNode.GetNthControlPointPositionWorld(1)
+
+            arrayPoint1=slicer.util.getNode('FemurPoints').GetNthControlPointPositionWorld(2)
+            arrayPoint2=slicer.util.getNode('FemurPoints').GetNthControlPointPositionWorld(3)
+
+            self.point_left_dict['point_presetline3d1'] = FirstSideLinePoint1
+            self.point_left_dict['point_presetline3d2'] = FirstSideLinePoint2
+            self.point_left_dict['point_realline3d1'] = RealTimeFirstSideLinePoint1
+            self.point_left_dict['point_realline3d2'] = RealTimeFirstSideLinePoint2
+
+            self.point_right_dict['point_presetline3d1'] = FirstFrontLinePoint1
+            self.point_right_dict['point_presetline3d2'] = FirstFrontLinePoint2
+            self.point_right_dict['point_realline3d1'] = RealTimeFirstFrontLinePoint1
+            self.point_right_dict['point_realline3d2'] = RealTimeFirstFrontLinePoint2
+            self.point_right_dict['point_downarrowpoint3d1'] = arrayPoint1
+            self.point_right_dict['point_downarrowpoint3d2'] = arrayPoint2
+
+            self.draw_line_actor(self.point_left_dict, self.point_right_dict)
+
+            # 更新renderWindow
+            self.threeDViews[0].threeDView().renderWindow().Render()
+            self.threeDViews[1].threeDView().renderWindow().Render()
 
         elif type==2:
+
+            #股骨第二截骨线
+            self.state = 3
             SecondSideLinePoint1=self.femurSecondCutSideLineNode.GetNthControlPointPositionWorld(0)
             SecondSideLinePoint2=self.femurSecondCutSideLineNode.GetNthControlPointPositionWorld(1)
             SecondFrontLinePoint1=self.femurSecondCutFrontLineNode.GetNthControlPointPositionWorld(0)
             SecondFrontLinePoint2=self.femurSecondCutFrontLineNode.GetNthControlPointPositionWorld(1)
+            RealTimeSecondSideLinePoint1=self.femurRealTimeSecondCutSideLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeSecondSideLinePoint2=self.femurRealTimeSecondCutSideLineNode.GetNthControlPointPositionWorld(1)
+            RealTimeSecondFrontLinePoint1=self.femurRealTimeSecondCutFrontLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeSecondFrontLinePoint2=self.femurRealTimeSecondCutFrontLineNode.GetNthControlPointPositionWorld(1)
 
+            ThirdFrontLinePoint1=self.femurThirdCutFrontLineNode.GetNthControlPointPositionWorld(0)
+            ThirdFrontLinePoint2=self.femurThirdCutFrontLineNode.GetNthControlPointPositionWorld(1)
+            RealTimeThirdFrontLinePoint1=self.femurRealTimeThirdCutFrontLineNode.GetNthControlPointPositionWorld(0)
+            RealTimeThirdFrontLinePoint2=self.femurRealTimeThirdCutFrontLineNode.GetNthControlPointPositionWorld(1)
+
+            arrayPoint1=slicer.util.getNode('FemurPoints').GetNthControlPointPositionWorld(1)
+            arrayPoint2=slicer.util.getNode('FemurPoints').GetNthControlPointPositionWorld(2)
+
+            self.point_left_dict['point_presetline3d1'] = SecondSideLinePoint1
+            self.point_left_dict['point_presetline3d2'] = SecondSideLinePoint2
+            self.point_left_dict['point_realline3d1'] = RealTimeSecondSideLinePoint1
+            self.point_left_dict['point_realline3d2'] = RealTimeSecondSideLinePoint2
+            self.point_left_dict['point_downarrowpoint3d1'] = SecondSideLinePoint1
+            self.point_left_dict['point_uparrowpoint3d2'] = RealTimeSecondSideLinePoint1
+
+            self.point_right_dict['point_presetline3d1'] = SecondFrontLinePoint1
+            self.point_right_dict['point_presetline3d2'] = SecondFrontLinePoint2
+            self.point_right_dict['point_realline3d1'] = RealTimeSecondFrontLinePoint1  
+            self.point_right_dict['point_realline3d2'] = RealTimeSecondFrontLinePoint2
+
+
+            self.point_right_dict['point_dashline3d1'] = ThirdFrontLinePoint1
+            self.point_right_dict['point_dashline3d2'] = ThirdFrontLinePoint2
+            self.point_right_dict['point_brokenline3d1'] = RealTimeThirdFrontLinePoint1
+            self.point_right_dict['point_brokenline3d2'] = RealTimeThirdFrontLinePoint2
+
+            # print("第一刀预设",SecondFrontLinePoint1,SecondFrontLinePoint2)
+            # print("第二刀预设",ThirdFrontLinePoint1,ThirdFrontLinePoint2)
+
+            self.draw_line_actor(self.point_left_dict, self.point_right_dict)
+
+            # 更新renderWindow
+            self.threeDViews[0].threeDView().renderWindow().Render()
+            self.threeDViews[1].threeDView().renderWindow().Render()
 
     def updatacolor(self):
         color = [1, 1, 0 ]
@@ -389,26 +774,32 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.threeDViews[0].threeDView().renderWindow().Render()
         self.threeDViews[1].threeDView().renderWindow().Render()
 
-    def onEnterPlanning(self):
-        # 将股骨设置在FemurTransNode下
-        self.FemurModel.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
-        self.FemurModel.GetDisplayNode().SetVisibility(0)
-        self.TibiaModel.GetDisplayNode().SetVisibility(0)
-        # 将股骨的标志点设置在FemurTransNode下
-        femurMarkupsNode=slicer.util.getNode('FemurPoints')
-        femurMarkupsNode.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
-        LowestPointsInner=slicer.util.getNode('LowestPointsInner')
-        LowestPointsInner.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
-        LowestPointsOuter=slicer.util.getNode('LowestPointsOuter')
-        LowestPointsOuter.SetAndObserveTransformNodeID(slicer.util.getNode('FemurTransNode').GetID())
 
 
-        # 将股骨假体变换设置为单位矩阵
-        FemurJTTransNode=slicer.util.getNode('FemurJTTransNode')
-        FemurJTTransNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(np.eye(4)))
-        # 将FemurJTTransNode父级设置为空
-        FemurJTTransNode.SetAndObserveTransformNodeID(None)
+    def registion(self,points_From, points_To):
+        if len(points_From)!=len(points_To):
+            return
+        fix_point = vtk.vtkPoints()
+        fix_point.SetNumberOfPoints(len(points_From))
+        mov_point = vtk.vtkPoints()
+        mov_point.SetNumberOfPoints(len(points_From))
+        for i in range(len(points_From)):
+            mov_point.SetPoint(i, points_From[i][0], points_From[i][1], points_From[i][2])
+            fix_point.SetPoint(i, points_To[i][0], points_To[i][1], points_To[i][2])
+            
+        fix_point.Modified()
+        mov_point.Modified()
+        landmarkTransform = vtk.vtkLandmarkTransform()
+        landmarkTransform.SetModeToRigidBody()
+        landmarkTransform.SetSourceLandmarks(mov_point)
+        landmarkTransform.SetTargetLandmarks(fix_point)
 
+        landmarkTransform.Update()
+        trans = np.zeros((4, 4))
+        for i in range(4):
+            for j in range(4):
+                trans[i][j] = landmarkTransform.GetMatrix().GetElement(i, j)
+        return trans
 
 
     def project_point_to_plane(self,point, plane_node_name):
@@ -427,18 +818,141 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         
         return projection
 
+    
+    # 停止绘制
+    def pause_paint(self):
+        self.is_pause = True
 
-    def onChangeFemurTransBaseTibia(self,caller,event):
+    def onChangeFemurTransBaseTibia(self, caller=None, event=None):
+        # 定义文件路径
+        log_file_path = os.path.join(os.path.dirname(__file__), "angle_data_log.txt")
+
         # 计算股骨工具相对于胫骨工具的变换，用于计算股骨的变换
-        FemurTransNode=slicer.util.getNode('FemurTransForm')
-        TibiaTransNode=slicer.util.getNode('TibiaTransForm')
-        femurTransBaseTibiaNode=slicer.util.getNode('FemurTransBaseTibia')
-        femurTrans=slicer.util.arrayFromTransformMatrix(FemurTransNode)
-        tibiaTrans=slicer.util.arrayFromTransformMatrix(TibiaTransNode)
-        femurTransBaseTibiaNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(np.dot(np.linalg.inv(tibiaTrans),femurTrans)))
+        FemurTransNode = slicer.util.getNode('Femurtool_Transform')
+        TibiaTransNode = slicer.util.getNode('Tibiatool_Transform')
+        femurTransBaseTibiaNode = slicer.util.getNode('FemurTransBaseTibia')
+        femurTrans = slicer.util.arrayFromTransformMatrix(FemurTransNode)
+        tibiaTrans = slicer.util.arrayFromTransformMatrix(TibiaTransNode)
+        FemurRealTrans = np.dot(femurTrans, self.FemurToRealTrans)
+        TibiaToOriginTrans = np.dot(np.linalg.inv(self.TibiaToRealTrans), np.linalg.inv(tibiaTrans))
+        TibiaToFemur = np.dot(TibiaToOriginTrans, FemurRealTrans)
+        femurTransBaseTibiaNode.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(TibiaToFemur))
+        minZInner, minZOuter = self.calculateLowestPointToTibiaCutPlane()
+        angle = slicer.modules.kneeplane.widgetRepresentation().self().transToEuler(TibiaToFemur)
+
+
+        if self.is_pause == False:
+            # 如果这是第一次调用，直接保存当前角度
+            if self.last_angle is None:
+                self.last_angle = int(angle[0])
+                self.last_minZInner = minZInner
+                self.last_minZOuter = minZOuter
+
+            # 计算当前角度与上一次角度的差值
+            angle_diff = int(angle[0] - self.last_angle)
+
+            # 打印上一次角度和值
+            ## print("上一次左 右 角度", self.last_minZInner, self.last_minZOuter, self.last_angle)
+            '''with open(log_file_path, "a") as file:
+                file.write(f"上一次 左:{self.last_minZInner} 右:{self.last_minZOuter} 角度:{self.last_angle}\n")
+            '''
+
+            # 如果角度差值大于1度，进行插值
+            if abs(angle_diff) > 1:
+                num_steps = int(abs(angle_diff))  # 插值的步数
+                for i in range(1, num_steps + 1):
+                    interpolated_angle = self.last_angle + i * (angle_diff / num_steps)
+                    interpolated_minZInner = minZInner + (self.last_minZInner - minZInner) / num_steps * (num_steps - i)
+                    interpolated_minZOuter = minZOuter + (self.last_minZOuter - minZOuter) / num_steps * (num_steps - i)
+                    if self.qMRML_widget is not None:
+                        # 调用 paintCurve 模块，传入插值后的角度
+                        slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.modifyPoint(
+                            (interpolated_minZInner, int(interpolated_angle)),
+                            (interpolated_minZOuter, int(interpolated_angle))
+                        )
+                    # 写入数据到文件
+                    '''with open(log_file_path, "a") as file:
+                        file.write(f"插入左:{interpolated_minZInner} 右:{interpolated_minZOuter} 角度:{int(interpolated_angle)}\n")
+                    '''
+            # 最后绘制当前的角度
+            if self.qMRML_widget is not None:
+                slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.modifyPoint(
+                    (minZInner, int(angle[0])), (minZOuter, int(angle[0]))
+                )
+
+            ## print("当前左 右 角度", minZInner, minZOuter, int(angle[0]))
+
+            # 写入当前数据到文件
+            '''with open(log_file_path, "a") as file:
+                file.write(f"当前左:{minZInner} 右:{minZOuter} 角度:{int(angle[0])}\n")
+            '''
+            # 更新 last_angle 为当前角度
+            self.last_angle = int(angle[0])
+            self.last_minZInner = minZInner
+            self.last_minZOuter = minZOuter
+            if abs(angle[0])<5:
+                if self.isDrawFinished():
+                    self.pause_paint()
+            else:
+                self.draw_time=0
 
 
 
+
+
+    # 当度数小于5度持续5s时，判断是否绘制完成
+    def isDrawFinished(self):
+        lineValues1=slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.getAllPoints()[0].copy()
+        lineValues2=slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.getAllPoints()[1].copy()
+        # 计算lineValues1中的每个元素的第一个数，有多少不等于0的
+        num1=len([value for value in lineValues1 if value[0]!=0])
+        num2=len([value for value in lineValues2 if value[0]!=0])
+        if num1>=90 and num2>=90:
+            nowTime=time.time()
+            if self.draw_time==0:
+                self.draw_time=nowTime
+                return False
+            if nowTime-self.draw_time>5:
+                self.draw_time=0
+                # 记录曲线
+                slicer.modules.kneeplane.widgetRepresentation().self().lineValues1=lineValues1
+                slicer.modules.kneeplane.widgetRepresentation().self().lineValues2=lineValues2
+                return True
+            else:
+                return False
+        else:
+            self.draw_time=0
+            return False
+
+
+        
+
+
+
+    # 计算内外侧最低点到胫骨截骨面的距离
+    def calculateLowestPointToTibiaCutPlane(self):
+        # 获取胫骨假体的父级变换
+        TibiaJTTransNode=slicer.util.getNode('TibiaTransNode')
+        TibiaJTTrans=slicer.util.arrayFromTransformMatrix(TibiaJTTransNode)
+        # 获取内侧最低点和外侧最低点
+        lowestPointsInner=slicer.util.getNode('LowestPointsInner')
+        lowestPointsOuter=slicer.util.getNode('LowestPointsOuter')
+        num=lowestPointsInner.GetNumberOfControlPoints()
+        PointsInner=[]
+        PointsOuter=[]
+        for i in range(num):
+            point=np.append(np.array(lowestPointsInner.GetNthControlPointPositionWorld(i)),1)
+            PointsInner.append(np.dot(TibiaJTTrans,point)[0:3])
+        
+        num=lowestPointsOuter.GetNumberOfControlPoints()
+        for i in range(num):
+            point=np.append(np.array(lowestPointsOuter.GetNthControlPointPositionWorld(i)),1)
+            PointsOuter.append(np.dot(TibiaJTTrans,point)[0:3])
+
+        # 获取PointsInner中Z的最小值
+        minZInner=np.min([point[2] for point in PointsInner])
+        minZOuter=np.min([point[2] for point in PointsOuter])
+        return minZInner,minZOuter
 
 
     def onChangeJTFemur(self,modelNode):
@@ -466,19 +980,19 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         # 获取模型节点
         modelNode = slicer.mrmlScene.GetFirstNodeByName(modelName)
         if not modelNode or not isinstance(modelNode, slicer.vtkMRMLModelNode):
-            print(f"Model {modelName} not found or is not a vtkMRMLModelNode!")
+            # print(f"Model {modelName} not found or is not a vtkMRMLModelNode!")
             return None
 
         # 获取模型的 PolyData
         modelPolyData = modelNode.GetPolyData()
         if not modelPolyData:
-            print(f"Model {modelName} has no PolyData!")
+            # print(f"Model {modelName} has no PolyData!")
             return None
         bounds=modelPolyData.GetBounds()
         # 获取渲染器中的所有 actors
         actors = renderer.GetActors()
         actors.InitTraversal()  # 初始化遍历
-        print(bounds)
+        ## print(bounds)
         # 遍历每一个 vtkActor
         for i in range(actors.GetNumberOfItems()):
             actor = actors.GetNextActor()
@@ -489,7 +1003,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
                 
                 return actor  # 找到与模型对应的 actor
 
-        print(f"Actor for model {modelName} not found!")
+        # print(f"Actor for model {modelName} not found!")
         return None
 
     def MoveActor(self,actor,threeDViewWidget,newRenderer):
@@ -520,6 +1034,14 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
         self.viewButtonList[4].setPositionByWidget(self.threeDViews[1],'bottom_right')
 
         self.verifyLabel.setGeometry(self.widget_Top.width / 2 - 50, self.widget_Top.height / 2 - 50, 100, 100)
+        '''# 设置进度条位置
+        
+        self.processBar.setGeometry(self.widget_Top.width / 2 - 100, self.widget_Top.height / 2 + 50, 200, 20)'''
+
+    def updateTibiaJtTransNodeByTransform(self,transform):
+        TibiaJTTransNode=slicer.util.getNode('TibiaJTTransNode')
+        
+        
 
 
     def draw_line_actor(self, point_left_dict, point_right_dict):
@@ -530,8 +1052,8 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_left.clear_actor_2(self.rendererList[1])
             self.lineactor_right.clear_actor_1(self.rendererList[2])
             self.lineactor_right.clear_actor_2(self.rendererList[3])
-            self.viewButtonList[0].CenterButton.setCenterNumber(11)
-            self.viewButtonList[2].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[0].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[2].CenterButton.setCenterNumber(11)
             self.viewButtonList[1].hide()
             self.viewButtonList[3].hide()
             self.viewButtonList[4].hide()
@@ -549,7 +1071,7 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_right.clear_actor_2(self.rendererList[3])
 
             # 左侧，只绘制两条线
-            self.viewButtonList[0].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[0].CenterButton.setCenterNumber(11)
             self.viewButtonList[0].CenterButton.setCenterText('post')
             renderer_left1 = self.rendererList[0]
             renderer_left2 = self.rendererList[1]
@@ -560,9 +1082,9 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
             # 右侧，只绘制线和箭头
             point_right_dict = point_right_dict
-            self.viewButtonList[2].CenterButton.setCenterNumber(11)
-            self.viewButtonList[3].CenterButton.setCenterNumber(11)
-            self.viewButtonList[4].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[2].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[3].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[4].CenterButton.setCenterNumber(11)
             renderer_right1 = self.rendererList[2]
             renderer_right2 = self.rendererList[3]
             self.lineactor_right.draw_downward_arrow(renderer_right1, point_right_dict['point_downarrowpoint3d1'])
@@ -578,14 +1100,12 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.viewButtonList[1].hide()
             self.viewButtonList[3].show()
             self.viewButtonList[4].show()
-
             self.lineactor_left.clear_actor_1(self.rendererList[0])
             self.lineactor_left.clear_actor_2(self.rendererList[1])
             self.lineactor_right.clear_actor_1(self.rendererList[2])
             self.lineactor_right.clear_actor_2(self.rendererList[3])
-
             # 左侧，只绘制两条线
-            self.viewButtonList[0].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[0].CenterButton.setCenterNumber(11)
             self.viewButtonList[0].CenterButton.setCenterText('flex')
             renderer_left1 = self.rendererList[0]
             renderer_left2 = self.rendererList[1]
@@ -593,12 +1113,11 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_left.draw_preset_Solid_line(renderer_left1, point_left_dict['point_presetline3d1'], point_left_dict['point_presetline3d2'])
             self.lineactor_left.draw_real_Solid_line(renderer_left1, point_left_dict['point_realline3d1'], point_left_dict['point_realline3d2'])
             self.lineactor_left.draw_alternating_line(renderer_left2, point_left_dict['point_presetline3d1'], point_left_dict['point_presetline3d2'])
-
             # 右侧，只绘制线和箭头
             point_right_dict = point_right_dict
-            self.viewButtonList[2].CenterButton.setCenterNumber(11)
-            self.viewButtonList[3].CenterButton.setCenterNumber(11)
-            self.viewButtonList[4].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[2].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[3].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[4].CenterButton.setCenterNumber(11)
             renderer_right1 = self.rendererList[2]
             renderer_right2 = self.rendererList[3]
             self.lineactor_right.draw_upward_arrow(renderer_right1, point_right_dict['point_downarrowpoint3d1'])
@@ -608,7 +1127,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_right.draw_alternating_line(renderer_right2, point_right_dict['point_presetline3d1'], point_right_dict['point_presetline3d2'])
             self.lineactor_right.draw_downward_arrow(renderer_right1, point_right_dict['point_realline3d1'])
             self.lineactor_right.draw_downward_arrow(renderer_right1, point_right_dict['point_realline3d2'])
-
         elif self.state == 3:
             self.verifyLabel.show()
             self.viewButtonList[1].show()
@@ -616,11 +1134,11 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.viewButtonList[4].show()
             # 给节点设置数字
             self.viewButtonList[0].CenterButton.setCenterText('flex')
-            self.viewButtonList[0].CenterButton.setCenterNumber(11)
-            self.viewButtonList[1].CenterButton.setCenterNumber(11)
-            self.viewButtonList[2].CenterButton.setCenterNumber(11)
-            self.viewButtonList[3].CenterButton.setCenterNumber(11)
-            self.viewButtonList[4].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[0].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[1].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[2].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[3].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[4].CenterButton.setCenterNumber(11)
 
             self.lineactor_left.clear_actor_1(self.rendererList[0])
             self.lineactor_left.clear_actor_2(self.rendererList[1])
@@ -639,9 +1157,9 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
 
             # 右侧，绘制线和箭头
             point_right_dict = point_right_dict
-            self.viewButtonList[2].CenterButton.setCenterNumber(11)
-            self.viewButtonList[3].CenterButton.setCenterNumber(11)
-            self.viewButtonList[4].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[2].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[3].CenterButton.setCenterNumber(11)
+            # self.viewButtonList[4].CenterButton.setCenterNumber(11)
             renderer_right1 = self.rendererList[2]
             renderer_right2 = self.rendererList[3]
             self.lineactor_right.draw_2d_broken_line(renderer_right1, point_right_dict['point_brokenline3d1'], point_right_dict['point_brokenline3d2'])
@@ -653,7 +1171,6 @@ class Surgical_NavigationWidget(ScriptedLoadableModuleWidget, VTKObservationMixi
             self.lineactor_right.draw_alternating_line(renderer_right2, point_right_dict['point_presetline3d1'], point_right_dict['point_presetline3d2'])
             self.lineactor_right.draw_upward_arrow(renderer_right1, point_right_dict['point_dashline3d1'])
             self.lineactor_right.draw_upward_arrow(renderer_right1, point_right_dict['point_dashline3d2'])
-
 
     
 class rendereractor:
@@ -1028,7 +1545,7 @@ class rendereractor:
         # 将世界坐标转换为显示坐标
         displayCoord = renderer.GetDisplayPoint()
         
-        print(f"worldCoord: {point_world}, displayCoord: {displayCoord}")
+        # print(f"worldCoord: {point_world}, displayCoord: {displayCoord}")
 
         return displayCoord[0:2]  # 返回 x, y 屏幕坐标
     
@@ -1049,6 +1566,9 @@ class rendereractor:
         # 将箭头添加到渲染器中
         self.actor_map.append(arrow_actor)
         renderer.AddActor2D(arrow_actor)
+
+
+
 
 class ArrowActor2D(vtk.vtkActor2D):
     def __init__(self, tip_point, direction, arrow_length=50.0, arrow_width=10.0):
@@ -1140,12 +1660,12 @@ class VerifyLabel(qt.QLabel):
         self.layout().setSpacing(0)
 
 
+
 # 自定义进度条，设置接口
 class TransparentProgressBar(qt.QProgressBar):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.initUI()
-
     def initUI(self):
         # 设置进度条样式
         self.setStyleSheet("""
@@ -1162,6 +1682,7 @@ class TransparentProgressBar(qt.QProgressBar):
         self.setRange(0, 100)  # 设置进度条范围
         self.setValue(0)  # 设置进度条初始值
         self.setAttribute(qt.Qt.WA_TranslucentBackground, True)
+
 
 # 自定义Label,包含两个label,两个label包含不同内容，一个是数字，一个是单位，数字设置特殊大小，单位设置右下对齐
 class CustomLabel(qt.QLabel):
@@ -1198,7 +1719,14 @@ class CustomLabel(qt.QLabel):
     def setAlignment_unit(self, alignment):
         self.unit_label.setAlignment(alignment)
 
-
+    # 切换文本颜色为蓝色或白色
+    def setTextColor(self, type):
+        if type == 'blue':
+            self.number_label.setStyleSheet("font-size: 24px;color: blue;")
+            self.unit_label.setStyleSheet("color: blue;")
+        elif type == 'white':
+            self.number_label.setStyleSheet("font-size: 24px;color: white;")
+            self.unit_label.setStyleSheet("color: white;")
 
 class CustomButton_one(qt.QPushButton):
     def __init__(self, center_text='', parent=None):
@@ -1226,6 +1754,15 @@ class CustomButton_one(qt.QPushButton):
 
     def setCenterText(self, text):
         self.center_text_label.setText(text)
+
+    # 切换文本颜色为蓝色或白色
+    def setTextColor(self, type):
+        self.center_text_label.setTextColor(type)
+        # 设置按钮边框颜色
+        if type == 'blue':
+            self.setStyleSheet("QPushButton {background-color: transparent; border: 2px solid blue; color: blue; border-radius: 20px;}")
+        elif type == 'white':
+            self.setStyleSheet("QPushButton {background-color: transparent; border: 2px solid lightgray; color: white; border-radius: 20px;}")
 
 
 class ViewPopWidget1(qt.QWidget):
@@ -1296,7 +1833,7 @@ class ViewPopWidget1(qt.QWidget):
         self_width = self.width
         self_height = self.height
 
-        print(widget_width, widget_height, self_width, self_height)
+        ## print(widget_width, widget_height, self_width, self_height)
 
         # 计算本窗口的位置
         if TopOrBottom == 'top':
@@ -1314,7 +1851,7 @@ class ViewPopWidget1(qt.QWidget):
             x = (widget_width ) / 2 - self_width / 2 + 100
             y = widget_height * 2 / 3
 
-        print(x, y)
+        ## print(x, y)
         # 设置本窗口的位置
         self.move(x, y)
                 # 记录左右侧按钮的位置
@@ -1341,3 +1878,31 @@ class Surgical_NavigationLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
     
+
+
+    def creatCordinate(self, pointCenter, pointInner, pointOuter, pointA):
+        XAxis = np.array(pointOuter) - np.array(pointInner)
+        XAxis = XAxis / np.linalg.norm(XAxis)
+        YAxis = np.array(pointA) - np.array(pointCenter)
+        YAxis = YAxis / np.linalg.norm(YAxis)
+
+        ZAxis = np.cross(XAxis, YAxis)
+        ZAxis = ZAxis / np.linalg.norm(ZAxis)
+        YAxis = np.cross(ZAxis, XAxis)
+        YAxis = YAxis / np.linalg.norm(YAxis)
+
+        # 创建坐标系，4*4矩阵，前三列为坐标系的三个轴，最后一列为原点
+        matrix = np.eye(4)
+        matrix[0:3, 0] = XAxis
+        matrix[0:3, 1] = YAxis
+        matrix[0:3, 2] = ZAxis
+        matrix[0:3, 3] = np.array(pointCenter)
+        return matrix
+
+
+    def getTransformedPoint(self, point, matrix):
+        # 将点转换到新的坐标系
+        point = np.array(point)
+        point = np.append(point, 1)
+        point = np.dot(matrix, point)
+        return point[0:3]

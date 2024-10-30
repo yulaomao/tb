@@ -105,6 +105,8 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.FemurCropModel = None
         self.TibiaCropModel = None
+        self.lineValues1 = None
+        self.lineValues2 = None
         self.myssm=ssmFemur()
         self.setUpAll3DView()
         self.setUpCurve()
@@ -273,6 +275,7 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ssm1.FilePath=self.resourcePath("static/asset/ssm")
         ssm1.Femur_list = meshPoints
         ssm1.judge = judge
+
         ssm1.preparPoints_femur()
         ssm1.FemurNihe(ssm1.Femur_list)
     
@@ -306,7 +309,7 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #     #markupsNode.AddControlPoint(model_points.GetPoint(i))
         # points.append(points1[-2])
         # points.append(points1[-1])
-        # print(points)
+        # # print(points)
         indexOut=[4514, 1278, 6772, 7561, 6347, 9477, 5901, 9764, 6760, 8996, 2811, 7618, 8250, 3802, 9049, 1731, 89, 1922, 6274,
                     4028, 2861, 5867, 6559, 5357, 9055, 9506, 4375, 4375, 2122, 1220, 6344, 8589, 574, 5755, 7045, 2790, 1266, 
                     5311, 5808, 8204, 6886]
@@ -365,11 +368,17 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 [0, 0, 1, 0],
                 [0, 0, 0, 1]])
         RASToUe4 = np.dot(Ftrans1, np.dot(RASToUe4, Ftrans1))
-        RASToUe4_ni = np.array([[1, 0, 0,0],
-                    [0, 0, 1,0],
-                    [0, -1, 0,0],
-                    [0, 0, 0,1]])
-        
+        if LorR=='R':
+            RASToUe4_ni = np.array([[1, 0, 0,0],
+                        [0, 0, 1,0],
+                        [0, -1, 0,0],
+                        [0, 0, 0,1]])
+        else:
+            RASToUe4_ni = np.array([[-1, 0, 0,0],
+                        [0, 0, 1,0],
+                        [0, -1, 0,0],
+                        [0, 0, 0,1]])
+            
         RASToUe4_ni=np.dot(Ftrans1, np.dot(RASToUe4_ni, Ftrans1))
         # myssm.scaleModel(myssm.FilePath + '/Femur.vtk',0.1,0.1,0.1)
         # myssm.HardModel1(myssm.FilePath + '/Femur.stl',Ftransx)
@@ -396,6 +405,8 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             point = myssm.myScene.getMarkupsByName(FemurPoints[i]+"1").getPoints()[0]
             points = [point[0], point[1], point[2],1]
             points = np.dot(RASToUe4,points)[0:3].tolist()
+            if LorR=='L':
+                points[0]=-points[0]
             p1.append(points)
         trans=[]
         for i in range(8):
@@ -410,6 +421,10 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
         jiatiload=myssm.jiatiload
+        if LorR=='L':
+            fromPoints[:,0]=-fromPoints[:,0]
+            pointsInner[:,0]=-pointsInner[:,0]
+            pointsOut[:,0]=-pointsOut[:,0]
 
         transform=myssm.registion(fromPoints,p1[0:8])
         # 对pointsInner及pointsOut进行变换
@@ -447,18 +462,23 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 [0, 1, 0, 0],
                 [0, 0, 1, 0],
                 [0, 0, 0, 1]])
-        RASToUe4_ni = np.array([[1, 0, 0,0],
-                    [0, 0, 1,0],
-                    [0, -1, 0,0],
-                    [0, 0, 0,1]])
+        if LorR=='R':
+            RASToUe4_ni = np.array([[1, 0, 0,0],
+                        [0, 0, 1,0],
+                        [0, -1, 0,0],
+                        [0, 0, 0,1]])
+        else:
+            RASToUe4_ni = np.array([[-1, 0, 0,0],
+                        [0, 0, 1,0],
+                        [0, -1, 0,0],
+                        [0, 0, 0,1]])
         Ftrans1 = np.array([[-1, 0, 0, 0],
                     [0, -1, 0, 0],
                     [0, 0, 1, 0],
                     [0, 0, 0, 1]])
         RASToUe4_ni=np.dot(Ftrans1, np.dot(RASToUe4_ni, Ftrans1))
         myssm.scaleModel(myssm.FilePath + '/Tibia.vtk',0.1,0.1,0.1)
-        if LorR=='L':
-            myssm.HardModel1(myssm.FilePath + '/Tibia.stl',Ftransx)
+
         myssm.HardModel1(myssm.FilePath + '/Tibia111.stl',RASToUe4_ni)
         #myssm.remeshModel(myssm.FilePath + '/Tibia.stl')
         myssm.remeshModel(myssm.FilePath + '/Tibia111.stl')
@@ -516,7 +536,7 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-        self.LOrR='R'
+        self.LOrR='L'
         # 为股骨假体创建一个变换矩阵节点
         self.FemurJTTransNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
         self.FemurJTTransNode.SetName('FemurJTTransNode')
@@ -536,9 +556,12 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pointsName=['开髓点', '内侧凹点', '外侧凸点', '内侧远端区域', '外侧远端区域', '内侧后髁区域', '外侧后髁区域', '外侧皮质高点', 'A点', 'H点']
         # 获取股骨头球心点
         qiuxinPoins = slicer.util.arrayFromMarkupsControlPoints(slicer.util.getNode('股骨头球心'))
-        # 球心拟合
-        myssm=ssmFemur()
-        center=myssm.onGuGuTouConfirm(qiuxinPoins)
+        if len(qiuxinPoins)==1:
+            center=qiuxinPoins[0]
+        else:
+            # 球心拟合
+            myssm=ssmFemur()
+            center=myssm.onGuGuTouConfirm(qiuxinPoins)
         femurPoints = []
         for i in range(len(pointsName)):
             pointNode = slicer.util.getNode(pointsName[i])
@@ -549,15 +572,17 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             pointNode = slicer.util.getNode(pointsName[i])
             femurPoints+=slicer.util.arrayFromMarkupsControlPoints(pointNode).tolist()
         femurPoints=np.array(femurPoints)
-        self.FemurNihe1(femurPoints.copy(), 'R')
+        if self.LOrR=='L':
+            femurPoints[:,0]=-femurPoints[:,0]
+        self.FemurNihe1(femurPoints.copy(), self.LOrR)
 
         femur_index = [0, 1, 2, 3, 4, 5, 6, 7, 8]
         keypoints = np.array(femurPoints)[femur_index]
         keypoints=list(keypoints)
         keypoints.append(femurPoints[10]) #股骨头球心
         keypoints.append(femurPoints[9]) #H点
-        # print(keypoints)
-        trans,p,p1,self.FemurJiatiload=self.caculateFemur(self.resourcePath("static/asset/ssm/Femur.vtk"),self.resourcePath("static/asset/ssm/"),np.array(keypoints), 'R')
+        # # print(keypoints)
+        trans,p,p1,self.FemurJiatiload=self.caculateFemur(self.resourcePath("static/asset/ssm/Femur.vtk"),self.resourcePath("static/asset/ssm/"),np.array(keypoints), self.LOrR)
 
         # 添加一个新的markups节点
         self.FemurPointsNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
@@ -585,96 +610,7 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-    # # 加入骨骼生成及规划方法
-    # def onGenerateFemur(self):
-    #     """
-    #     当用户点击“生成”按钮时调用。
 
-    #     该方法调用逻辑类中的生成方法。
-
-    #     参数:
-    #     无
-
-    #     返回:
-    #     无
-    #     """
-    #     jsonPath = "D:/code/myExt/extension/KneePlane/Resources/static/asset/ssm/FemurR.json"
-
-    #     # # 从选取的点中，获取最终的点
-    #     # pointsName=['开髓点', '内侧凹点', '外侧凸点', 'A', '外侧远端区域', '内侧后髁', '外侧后髁', '外侧皮质高点', 'A点', 'H点']
-    #     # # 获取股骨头球心点
-    #     # qiuxinPoins = slicer.util.arrayFromMarkupsControlPoints(slicer.util.getNode('股骨头球心区域'))
-    #     # # 球心拟合
-    #     # myssm=ssmFemur()
-    #     # center=myssm.onGuGuTouConfirm(qiuxinPoins)
-        
-
-
-
-    #     self.LOrR='R'
-    #     # 为股骨假体创建一个变换矩阵节点
-    #     self.FemurJTTransNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    #     self.FemurJTTransNode.SetName('FemurJTTransNode')
-    #     # 添加5个平面节点
-    #     self.FemurPlaneCutNodeList = []
-    #     for i in range(5):
-    #         plane = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsPlaneNode')
-    #         plane.SetCenter(self.planePoits[2][i])
-    #         plane.SetNormal(self.planeNormal[i])
-    #         plane.SetName('FemurPlane'+str(i))
-    #         plane.SetDisplayVisibility(False)
-    #         plane.SetLocked(True)
-    #         plane.SetAndObserveTransformNodeID(self.FemurJTTransNode.GetID())
-    #         self.FemurPlaneCutNodeList.append(plane)
-        
-    #     #读取为字典数据
-    #     with open(jsonPath, 'r') as f:
-    #         meshPoints = literal_eval(f.read())
-    #         points_x=meshPoints['x'].split(',')
-    #         points_y=meshPoints['y'].split(',')
-    #         points_z=meshPoints['z'].split(',')
-    #         points=[]
-    #         for i in range(len(points_x)):
-    #             if points_x[i]:
-    #                 points.append([-10*float(points_x[i]),-10*float(points_z[i]),10*float(points_y[i])])
-    #         # for i in range(len(points)):
-    #         #     points[i][0]=-points[i][0]
-    #         print(points)
-    #         #self.FemurNihe1(np.array(points), 'R')
-    #         #femur_index = [0, 6, 5, 4, 3, 2, 1, 7, 8,10,9]
-    #         femur_index = [0, 1, 2, 3, 4, 5, 6, 7, 8]
-    #         keypoints = np.array(points)[femur_index]
-    #         keypoints=list(keypoints)
-    #         keypoints.append(points[10]) #股骨头球心
-    #         keypoints.append(points[9]) #H点
-    #         # print(keypoints)
-    #         trans,p,p1,self.FemurJiatiload=self.caculateFemur(self.resourcePath("static/asset/ssm/Femur.vtk"),self.resourcePath("static/asset/ssm/"),np.array(keypoints), 'R')
-
-    #         # 添加一个新的markups节点
-    #         self.FemurPointsNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-    #         self.FemurPointsNode.SetName('FemurPoints')
-    #         for i in range(len(p)):
-    #             self.FemurPointsNode.AddControlPoint(p1[i])
-    #         # 隐藏markupsNode
-    #         self.FemurPointsNode.SetDisplayVisibility(False)
-    #         # 加载假模型
-    #         modelPath=self.resourcePath("static/asset/ssm/Femur111.stl")
-    #         self.FemurModel=slicer.util.loadModel(modelPath)
-    #         self.FemurModel.SetName('FemurModel')
-    #         # self.onHideModel(self.FemurModel, self.viewList[3:6])
-    #         # self.onShowModel(self.FemurModel, self.viewList[0:3])
-    #         self.FemurModel.SetDisplayVisibility(False)
-    #         # 为股骨创建变换矩阵节点
-    #         self.FemurTransNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    #         self.FemurTransNode.SetName('FemurTransNode')
-    #         self.FemurModel.SetAndObserveTransformNodeID(self.FemurTransNode.GetID())
-    #         self.FemurPointsNode.SetAndObserveTransformNodeID(self.FemurTransNode.GetID())
-    #         self.LowestPointsInnerNode.SetAndObserveTransformNodeID(self.FemurTransNode.GetID())
-    #         self.LowestPointsOutNode.SetAndObserveTransformNodeID(self.FemurTransNode.GetID())
-    #         # 加载股骨假体
-    #         self.onSwitchFemurJTModel(self.FemurJiatiload)
-
-    
 
     def onGenerateTibia(self):
         """
@@ -688,7 +624,7 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         返回:
         无
         """
-        self.LOrR='R'
+        self.LOrR='L'
         # 为胫骨假体创建一个变换矩阵节点
         self.TibiaJTTransNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
         self.TibiaJTTransNode.SetName('TibiaJTTransNode')
@@ -708,18 +644,21 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for i in range(len(pointsName)):
             pointNode = slicer.util.getNode(pointsName[i])
             tibiaPoints.append(list(pointNode.GetNthControlPointPosition(0)))
+            pointNode.SetAndObserveTransformNodeID(None)
         # 添加区域点
         for name in ['胫骨内侧区域','胫骨外侧区域', '胫骨结节区域']:
             pointNode = slicer.util.getNode(name)
             tibiaPoints+=slicer.util.arrayFromMarkupsControlPoints(pointNode).tolist()
         tibiaPoints=np.array(tibiaPoints)
+        if self.LOrR=='L':
+            tibiaPoints[:,0]=-tibiaPoints[:,0]
 
-        self.TibiaNihe(np.array(tibiaPoints), 'R')
+        self.TibiaNihe(np.array(tibiaPoints), self.LOrR)
         femur_index = [0, 1, 2, 3, 4, 5, 6, 7, 8,9,10,11]
         keypoints = np.array(tibiaPoints)[femur_index]
-        # print(keypoints)
-        trans,p,p1,jiatiload=self.caculateTibia(self.resourcePath("static/asset/ssm/Tibia.vtk"),self.resourcePath("static/asset/ssm/"),np.array(keypoints), 'R')
-        print(p1,jiatiload)
+        # # print(keypoints)
+        trans,p,p1,jiatiload=self.caculateTibia(self.resourcePath("static/asset/ssm/Tibia.vtk"),self.resourcePath("static/asset/ssm/"),np.array(keypoints), self.LOrR)
+        # # print(p1,jiatiload)
 
         # 添加一个新的markups节点
         self.TibiaPointsNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
@@ -743,74 +682,7 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 加载胫骨假体
         self.onSwitchTibiaJTModel(jiatiload)
 
-    # def onGenerateTibia(self):
-    #     """
-    #     当用户点击“生成”按钮时调用。
-
-    #     该方法调用逻辑类中的生成方法。
-
-    #     参数:
-    #     无
-
-    #     返回:
-    #     无
-    #     """
-    #     jsonPath = "D:/code/myExt/extension/KneePlane/Resources/static/asset/ssm/TibiaR.json"
-    #     self.LOrR='R'
-    #     # 为胫骨假体创建一个变换矩阵节点
-    #     self.TibiaJTTransNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    #     self.TibiaJTTransNode.SetName('TibiaJTTransNode')
-    #     # 添加1个平面节点
-    #     self.TibiaPlaneCutNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsPlaneNode')
-    #     self.TibiaPlaneCutNode.SetCenter(0,0,0)
-    #     self.TibiaPlaneCutNode.SetNormal(0,0,-1)
-    #     self.TibiaPlaneCutNode.SetName('TibiaPlane')
-    #     self.TibiaPlaneCutNode.SetDisplayVisibility(False)
-    #     self.TibiaPlaneCutNode.SetLocked(True)
-    #     self.TibiaPlaneCutNode.SetAndObserveTransformNodeID(self.TibiaJTTransNode.GetID())
-
-    
-    #     #读取为字典数据
-    #     with open(jsonPath, 'r') as f:
-    #         meshPoints = literal_eval(f.read())
-    #         points_x=meshPoints['x'].split(',')
-    #         points_y=meshPoints['y'].split(',')
-    #         points_z=meshPoints['z'].split(',')
-    #         points=[]
-    #         for i in range(len(points_x)):
-    #             if points_x[i]:
-    #                 points.append([-10*float(points_x[i]),-10*float(points_z[i]),10*float(points_y[i])])
-    #         for i in range(len(points)):
-    #             points[i][0]=-points[i][0]
-    #         print(points)
-    #         #self.TibiaNihe(np.array(points), 'R')
-    #         femur_index = [0, 1, 2, 3, 4, 5, 6, 7, 8,9,10,11,12,13,14]
-    #         keypoints = np.array(points)[femur_index]
-    #         # print(keypoints)
-    #         trans,p,p1,jiatiload=self.caculateTibia(self.resourcePath("static/asset/ssm/Tibia.vtk"),self.resourcePath("static/asset/ssm/"),np.array(keypoints), 'R')
-    #         print(p1,jiatiload)
-
-    #         # 添加一个新的markups节点
-    #         self.TibiaPointsNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-    #         self.TibiaPointsNode.SetName('TibiaPoints')
-    #         for i in range(len(p1)):
-    #             self.TibiaPointsNode.AddControlPoint(p1[i])
-    #         # 隐藏markupsNode
-    #         self.TibiaPointsNode.SetDisplayVisibility(False)
-    #         # 加载假模型
-    #         modelPath=self.resourcePath("static/asset/ssm/Tibia111.stl")
-    #         self.TibiaModel=slicer.util.loadModel(modelPath)
-    #         self.TibiaModel.SetName('TibiaModel')
-    #         # self.onHideModel(self.TibiaModel, self.viewList[3:6])
-    #         # self.onShowModel(self.TibiaModel, self.viewList[0:3])
-    #         self.TibiaModel.SetDisplayVisibility(False)
-    #         # 为胫骨创建变换矩阵节点
-    #         self.TibiaTransNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    #         self.TibiaTransNode.SetName('TibiaTransNode')
-    #         self.TibiaModel.SetAndObserveTransformNodeID(self.TibiaTransNode.GetID())
-    #         self.TibiaPointsNode.SetAndObserveTransformNodeID(self.TibiaTransNode.GetID())
-    #         # 加载胫骨假体
-    #         self.onSwitchTibiaJTModel(jiatiload)
+   
 
     # 生成最低点点列
     def onGenerateLowestPoints(self,inners=[],outs=[]):
@@ -1024,6 +896,8 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
+
+
     # 对股骨进行裁剪
     def onCropFemur(self):
         # 判断输出结果模型是否存在
@@ -1048,11 +922,17 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # 设置模型在哪几个视图中显示
             self.onShowModel(self.FemurCropModel, [self.viewList[0],self.viewList[1],self.viewList[2],self.viewList[4]])
             self.onHideModel(self.FemurCropModel, [self.viewList[3],self.viewList[5]])
+            try:
+                self.initCutInf=self.onCalculate()
+            except:
+                pass
 
         else:
             slicer.modules.dynamicmodeler.logic().RunDynamicModelerTool(self.FemurDynamicModelerNode)
-        
-        self.onCalculate()
+            cutinfo=self.onCalculate()
+            
+
+
 
     # 对胫骨进行裁剪
     def onCropTibia(self):
@@ -1077,11 +957,69 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # 设置模型在哪几个视图中显示
             self.onShowModel(self.TibiaCropModel, self.viewList[3:6])
             self.onHideModel(self.TibiaCropModel, self.viewList[0:3])
+            self.initCutInf=self.onCalculate()
 
         else:
             slicer.modules.dynamicmodeler.logic().RunDynamicModelerTool(self.TibiaDynamicModelerNode)
+            cutinfo=self.onCalculate()
+            
 
-        self.onCalculate()
+
+
+    
+    def upDateAllLine(self,FemurInnerValueNow,FemurOuterValueNow,FemurHKValueInnerNow,FemurHKValueOuterNow,TibiaInnerValueNow,TibiaOuterValueNow):
+        if self.lineValues1==None:
+
+            self.lineValues1=slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.getAllPoints()[0].copy()
+            self.lineValues2=slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.getAllPoints()[1].copy()
+        # 将self.lineValues1复制出来一份
+        FemurInnerValue=self.initCutInf[1]
+        FemurOuterValue=self.initCutInf[0]
+        innerDiff=FemurInnerValueNow-FemurInnerValue
+        outerDiff=FemurOuterValueNow-FemurOuterValue
+        lineValues1=self.caculateNewLineValue(self.lineValues1.copy(),innerDiff,0)
+        lineValues2=self.caculateNewLineValue(self.lineValues2.copy(),outerDiff,0)
+
+        # 后髁截骨值
+        FemurHKValueInner=self.initCutInf[2]
+        FemurHKValueOuter=self.initCutInf[3]
+        innerDiff=FemurHKValueInnerNow-FemurHKValueInner
+        outerDiff=FemurHKValueOuterNow-FemurHKValueOuter
+        lineValues1=self.caculateNewLineValue(lineValues1,innerDiff,1)
+        lineValues2=self.caculateNewLineValue(lineValues2,outerDiff,1)
+
+        TibiaInnerValue=self.initCutInf[7]
+        TibiaOuterValue=self.initCutInf[8]
+        innerDiff=TibiaInnerValueNow-TibiaInnerValue
+        outerDiff=TibiaOuterValueNow-TibiaOuterValue
+        lineValues1=self.caculateNewLineValue(lineValues1,innerDiff,2)
+        lineValues2=self.caculateNewLineValue(lineValues2,outerDiff,2)
+
+        slicer.modules.paintcurve.widgetRepresentation().self().curve_widget.modifyallpoints(lineValues1,lineValues2)
+
+
+
+
+    def caculateNewLineValue(self,lineValues,value,type):
+        if type==0:
+            for i in range(len(lineValues)):
+                temp_list = list(lineValues[i])  # 将元组转换为列表
+                temp_list[0] = temp_list[0] + value * (1 - i / 90.0)  # 修改列表中的元素
+                lineValues[i] = tuple(temp_list)  # 将列表转换回元组
+        elif type==1:
+            for i in range(len(lineValues)):
+                temp_list = list(lineValues[i])  # 将元组转换为列表
+                temp_list[0]=temp_list[0]+value*(i/90.0)
+                lineValues[i] = tuple(temp_list)  # 将列表转换回元组
+        elif type==2:
+            for i in range(len(lineValues)):
+                temp_list = list(lineValues[i])
+                temp_list[0] = temp_list[0] + value
+                lineValues[i] = tuple(temp_list)
+
+
+
+        return lineValues
 
 
     # 计算各角度及距离信息
@@ -1141,12 +1079,19 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         femurJTTrans = slicer.util.arrayFromTransformMatrix(self.FemurJTTransNode)
         femurJTTransToTrans = np.dot(femurTrans,np.linalg.inv(femurJTTrans))
         femurJTTransToTransEuler = self.transToEuler(femurJTTransToTrans)
-        print("外侧截骨间距：", distance2)
-        print("内侧截骨间距：", distance1)
-        print("内侧后髁间距：", distance3)
-        print("外侧后髁间距：", distance4)
-        print("外侧皮质高点间距：", distance5)
-        print("假体变换矩阵到股骨变换矩阵角度：", femurJTTransToTransEuler)
+        ## print("外侧截骨间距：", distance2)
+        ## print("内侧截骨间距：", distance1)
+        ## print("内侧后髁间距：", distance3)
+        ## print("外侧后髁间距：", distance4)
+        ## print("外侧皮质高点间距：", distance5)
+        ## print("假体变换矩阵到股骨变换矩阵角度：", femurJTTransToTransEuler)
+        outside = distance2
+        inside = distance1
+        insideback = distance3
+        outsideback = distance4
+        outsidehigh = distance5
+        FemurAngle1 = femurJTTransToTransEuler[1]
+        FemurAngle2 = femurJTTransToTransEuler[0]
 
         self.viewButtonList[0].setCenterText(-femurJTTransToTransEuler[1])
         self.viewButtonList[1].setLeftText(distance2)
@@ -1166,13 +1111,13 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             planeNormal = np.array(plane.GetNormalWorld())
             planeCenter = np.array(plane.GetCenterWorld())
             # 获取胫骨内侧高点
-            point1 = np.array(self.TibiaPointsNode.GetNthControlPointPositionWorld(0))
+            point1 = np.array(self.TibiaPointsNode.GetNthControlPointPositionWorld(2))
             # 计算内侧高点到切割面的距离
             distance1 = np.abs(np.dot(planeNormal, point1 - planeCenter))
             if (self.onCalculatePointWithPlane(point1, planeCenter, planeNormal)):
                 distance1 = -distance1
             # 获取胫骨外侧高点
-            point2 = np.array(self.TibiaPointsNode.GetNthControlPointPositionWorld(1))
+            point2 = np.array(self.TibiaPointsNode.GetNthControlPointPositionWorld(3))
             # 计算外侧高点到切割面的距离
             distance2 = np.abs(np.dot(planeNormal, point2 - planeCenter))
             if (self.onCalculatePointWithPlane(point2, planeCenter, planeNormal)):
@@ -1188,10 +1133,20 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.viewButtonList[6].setRightText(distance2)
             self.viewButtonList[7].setCenterText(-tibiaJTTransToTransEuler[1])
             self.viewButtonList[8].setCenterText(-tibiaJTTransToTransEuler[0])
+            tibiaInside = distance1
+            tibiaOutside = distance2
+            TibiaAngle1 = tibiaJTTransToTransEuler[0]
+            TibiaAngle2 = tibiaJTTransToTransEuler[1]
+            try:
+                self.upDateAllLine(inside,outside,insideback,outsideback,tibiaInside,tibiaOutside)
+            except:
+                pass
+            return  [outside,inside,insideback,outsideback,outsidehigh,FemurAngle1,FemurAngle2,tibiaInside,tibiaOutside,TibiaAngle1,TibiaAngle2]
+
 
         except Exception as e:
             print(e)
-
+        
         
     # 计算一个点在平面的正面还是背面
     def onCalculatePointWithPlane(self, point, planeCenter, planeNormal):
@@ -1300,9 +1255,21 @@ class KneePlaneWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         cameraNode6.SetViewUp(0,0,1)
         for i in range(6):
             self.viewList[i].viewWidget().resetFocalPoint()
+        self.set_vtk_interaction(False)
 
+        
 
-
+    def set_vtk_interaction(self,enabled=True):
+        # 获取所有3D视图
+        for view in self.viewList:
+            # 获取视图的交互器
+            interactor = view.threeDView().renderWindow().GetInteractor()
+            if enabled:
+                # 启用鼠标交互
+                interactor.Enable()
+            else:
+                # 禁用鼠标交互
+                interactor.Disable()
 
 
 
@@ -1448,11 +1415,10 @@ class ViewPopWidget1(qt.QWidget):
             self.CenterButton.setMaximumWidth(200)
             self.CenterButton.setMinimumWidth(200)
 
-
         self.CenterButton.setMinimumHeight(50)
         layout.addWidget(self.CenterButton)
-        self.CenterButton.clicked.connect(self.onCenterClick)
-        self.CenterButton.setCheckable(True)
+        #self.CenterButton.clicked.connect(self.onCenterClick)
+        # self.CenterButton.setCheckable(True)
 
         # 创建并添加+按钮
         self.RightButton = qt.QPushButton('+', self)
@@ -1485,7 +1451,6 @@ class ViewPopWidget1(qt.QWidget):
         self.LeftButton.setStyleSheet(button_style)
         self.CenterButton.setStyleSheet(button_style)
         self.RightButton.setStyleSheet(button_style)
-        
 
     def initAnimations(self):
         self.left_animation = qt.QPropertyAnimation(self.LeftButton, b"pos")
@@ -1497,30 +1462,36 @@ class ViewPopWidget1(qt.QWidget):
         self.left_animation.finished.connect(self.setButtonVisible)
         self.right_animation.finished.connect(self.setButtonVisible)
 
+    # def onCenterClick(self):
+    #     self.toggleButtons(self.CenterButton.isChecked())
 
+    def enterEvent(self, event):
+        self.toggleButtons(True)
 
-    def onCenterClick(self):
+    def leaveEvent(self, event):
+        self.toggleButtons(False)
+
+    def toggleButtons(self, show):
         center_button_width = self.CenterButton.width
         left_button_width = self.LeftButton.width
         right_button_width = self.RightButton.width
 
-        if self.CenterButton.isChecked():
+        if show:
             self.LeftButton.show()
             self.RightButton.show()
 
             # 计算中间按钮的中心位置
             center_pos = self.CenterButton.pos + qt.QPoint(center_button_width // 2, 0)
-            
+
             # 计算左右侧按钮的起始位置，使它们位于中间按钮的两端
             left_start_pos = center_pos
             right_start_pos = center_pos
 
             # 计算左右侧按钮的结束位置，最终位置距离中间按钮3个像素
-            left_end_pos = qt.QPoint(6, 6)#center_pos - qt.QPoint(center_button_width // 2 + 3+left_button_width, 0)
+            left_end_pos = qt.QPoint(6, 6)
             right_end_pos = center_pos + qt.QPoint(center_button_width // 2 + 3, 0)
-            left_start_pos=left_end_pos+qt.QPoint(left_button_width+3,0)
-            right_start_pos=right_end_pos-qt.QPoint(right_button_width+3,0)
-
+            left_start_pos = left_end_pos + qt.QPoint(left_button_width + 3, 0)
+            right_start_pos = right_end_pos - qt.QPoint(right_button_width + 3, 0)
 
             self.left_animation.setStartValue(left_start_pos)
             self.left_animation.setEndValue(left_end_pos)
@@ -1537,15 +1508,14 @@ class ViewPopWidget1(qt.QWidget):
         else:
             # 计算中间按钮的中心位置
             center_pos = self.CenterButton.pos + qt.QPoint(center_button_width // 2, 0)
-            
+
             # 计算左右侧按钮的起始位置，使它们位于中间按钮的两端
-            left_start_pos = qt.QPoint(6, 6)#center_pos - qt.QPoint(center_button_width // 2 + 3+left_button_width, 0)
+            left_start_pos = qt.QPoint(6, 6)
             right_start_pos = center_pos + qt.QPoint(center_button_width // 2 + 3, 0)
 
             # 计算左右侧按钮的结束位置，最终位置为中间按钮的中心位置
-            left_end_pos = left_start_pos+qt.QPoint(left_button_width+3,0) 
-            right_end_pos = right_start_pos-qt.QPoint(right_button_width+3,0)
-
+            left_end_pos = left_start_pos + qt.QPoint(left_button_width + 3, 0)
+            right_end_pos = right_start_pos - qt.QPoint(right_button_width + 3, 0)
 
             self.left_animation.setStartValue(left_start_pos)
             self.left_animation.setEndValue(left_end_pos)
@@ -1557,15 +1527,13 @@ class ViewPopWidget1(qt.QWidget):
             self.left_animation.start()
             self.right_animation.start()
 
-
     def setButtonVisible(self):
-        if self.CenterButton.isChecked():
+        if self.underMouse():
             self.LeftButton.show()
             self.RightButton.show()
         else:
             self.LeftButton.hide()
             self.RightButton.hide()
-
     def setLeftText(self, text):
         self.CenterButton.setLeftNumber(np.round(text,2))
 
@@ -1596,7 +1564,7 @@ class ViewPopWidget1(qt.QWidget):
             x = (widget_width - self_width) // 2
             y = widget_height - 5- self_height
 
-        print(x, y)
+        ## print(x, y)
         # 设置本窗口的位置
         self.move(x, y)
                 # 记录左右侧按钮的位置
@@ -1820,7 +1788,7 @@ class ssm:
             for j in range(4):
                 trans[i][j] = self.landmarkTransform.GetMatrix().GetElement(i, j)
         d = self.ComputeMeanDistance(self.meshPoints, self.polydata_target, trans)
-        print(d)
+        ## print(d)
         return d
 
     # 使点列到一个模型表面距离最小
@@ -1871,7 +1839,7 @@ class ssm:
         hh = {}
         for i in range(len(old_target)):
           d = self.distance(old_target[i], target)
-          # print(d)
+          # # print(d)
           hh[i] = d
         return int(min(hh, key=hh.get))
 
@@ -1879,7 +1847,7 @@ class ssm:
     def moveSurfaceToTarget(self, data, target):
         for i in range(len(target)):
             idx = self.panduan(data, target[i])
-            # print(idx)
+            # # print(idx)
             data = self.move(data, idx, target[i])
         return data
 
@@ -1962,7 +1930,7 @@ class ssm:
                             [0, 0, 0, 1]])
 
         self.trans_femur = np.linalg.inv(trans)
-        #self.trans_femur = np.dot(Ftrans1, np.dot(trans_ni, Ftrans1))
+        # #self.trans_femur = np.dot(Ftrans1, np.dot(trans_ni, Ftrans1))
         # if self.judge == 'L':
         #     FemurTrans = np.array([[-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
         #     # self.HardModel(self.FilePath + '/Femur.stl', FemurTrans)
@@ -1984,7 +1952,7 @@ class ssm:
             self.meshPoints[i][1] = -self.meshPoints[i][1]
         self.mean_shape = np.load(self.FilePath + '/mean_tibia.npy')
         self.eigenvectors = np.load(self.FilePath + '/ssm_tibia.npy')
-        print('self.keypoints',self.keypoints)
+        ## print('self.keypoints',self.keypoints)
         targetReader = vtk.vtkPolyDataReader()  
         targetReader.SetFileName(self.FilePath + '/Tibia.vtk')
         targetReader.Update()
@@ -2055,8 +2023,8 @@ class ssm:
         #     # self.HardModel(self.FilePath + '/Femur.stl', FemurTrans)
         #     # self.trans_femur = np.dot(FemurTrans, self.trans_femur)
         #     self.trans_tibia = np.dot(FemurTrans, self.trans_tibia)
-        #self.trans_femur = np.dot(Ftrans1, np.dot(self.trans_femur, Ftrans1))
-        #self.SmmothModel(self.FilePath + '/Tibia.vtk')
+        # #self.trans_femur = np.dot(Ftrans1, np.dot(self.trans_femur, Ftrans1))
+        # #self.SmmothModel(self.FilePath + '/Tibia.vtk')
         self.HardModel(self.FilePath + '/Tibia.vtk',self.trans_tibia)
         #model=slicer.util.loadModel(self.FilePath + '/Tibia.stl')
 
@@ -2327,7 +2295,7 @@ class ssmFemur:
     def onGuGuTouConfirm(self,points):
         points = points.astype(np.float64)  # 防止溢出
         num_points = points.shape[0]
-        print(num_points)
+        # print(num_points)
         x = points[:, 0]
         y = points[:, 1]
         z = points[:, 2]
@@ -2356,7 +2324,7 @@ class ssmFemur:
         b = np.array([xxx_avr - x_avr * xx_avr + xyy_avr - x_avr * yy_avr + xzz_avr - x_avr * zz_avr,
                     xxy_avr - y_avr * xx_avr + yyy_avr - y_avr * yy_avr + yzz_avr - y_avr * zz_avr,
                     xxz_avr - z_avr * xx_avr + yyz_avr - z_avr * yy_avr + zzz_avr - z_avr * zz_avr])
-        # print(A, b)
+        # # print(A, b)
         b = b / 2
         center = np.linalg.solve(A, b)
         x0 = center[0]
@@ -2364,7 +2332,7 @@ class ssmFemur:
         z0 = center[2]
         r2 = xx_avr - 2 * x0 * x_avr + x0 * x0 + yy_avr - 2 * y0 * y_avr + y0 * y0 + zz_avr - 2 * z0 * z_avr + z0 * z0
         r = r2 ** 0.5
-        print(center, r)
+        # print(center, r)
         return center
 
 
@@ -2432,10 +2400,10 @@ class ssmFemur:
         # word = np.dot(np.dot(Ftrans1, FemurHardTrans), Ftrans1)
         self.HardModel(FemurHardTrans)
         self.updateLocator()
-        writer = vtk.vtkSTLWriter()
-        writer.SetFileName("d:/data/Femur.stl")
-        writer.SetInputData(self.polydata)
-        writer.Write()
+        # writer = vtk.vtkSTLWriter()
+        # writer.SetFileName("d:/data/Femur.stl")
+        # writer.SetInputData(self.polydata)
+        # writer.Write()
         points=[]
         FemurPoints = ['开髓点', '内侧凹点', '外侧凸点', '内侧远端', '外侧远端', '内侧后髁', '外侧后髁', '外侧皮质高点', 'A点', "股骨头球心", 'H点', "femurUp1", "femurUp2"]
         for i in range(len(FemurPoints)):
@@ -2446,7 +2414,7 @@ class ssmFemur:
             points.append(list(np.dot(Ftrans3, point)[0:3]))
         #self.updateLowPoints(Ftrans3)
 
-        print("pointspointspointspointspointspoints:",points)
+        # print("pointspointspointspointspointspoints:",points)
 
 
     def updateLowPoints(self,trans,index=0):
@@ -2486,8 +2454,8 @@ class ssmFemur:
         point.RemoveAllPoints()
         point.AddPoints(self.pointsInner[0])
         point = self.myScene.getMarkupsByName('外侧后髁1')
-        print(self.pointsOut[0])
-        print(point.getPoints()[0])
+        # print(self.pointsOut[0])
+        # print(point.getPoints()[0])
         point.RemoveAllPoints()
         point.AddPoints(self.pointsOut[0])
 
@@ -2584,12 +2552,12 @@ class ssmFemur:
         
 
 
-        print("Ttrans2",Ttrans2)
+        # print("Ttrans2",Ttrans2)
         Ftransform1 = self.myScene.AddTransform('变换_胫骨临时', self.Ttrans3)
         Ftransform11 = self.myScene.AddTransform('变换_胫骨约束', Ttrans4)
         Ftransform12 = self.myScene.AddTransform('变换_胫骨调整', Ttrans4)
         Ftransform12.parent = Ftransform11
-        print("self.Ttrans3",self.Ttrans3)
+        # print("self.Ttrans3",self.Ttrans3)
 
 
         self.TibiaHardTrans =self.Ttrans3
@@ -2601,8 +2569,8 @@ class ssmFemur:
         self.WordToReal = np.dot(Ftrans1, self.Ttrans3)
         #self.TibiaHardTrans = np.dot(Ftrans1, self.TibiaHardTrans)
         #self.TibiaHardTrans = np.dot(Ftrans1, np.dot(self.TibiaHardTrans, Ftrans1))
-        #print("self.Ftrans2", self.Ftrans2)
-        #print("self.Ftrans3",self.Ftrans3)
+        ## print("self.Ftrans2", self.Ftrans2)
+        ## print("self.Ftrans3",self.Ftrans3)
         self.HardModel(self.FilePath + '/Tibia.stl', self.TibiaHardTrans)
         #model=slicer.util.loadModel(self.FilePath + '/Tibia1.stl')
 
@@ -2714,8 +2682,8 @@ class ssmFemur:
         points2JGMUp=(Femur2JGM[0]+Femur2JGM[1])/2
         points2JGMUp[2]=points2JGMUp[2]-self.destance
 
-        # print('新的z方向距离',-self.getDistance(points2JGMUp))
-        # print('jiu的x方向距离',x)
+        # # print('新的z方向距离',-self.getDistance(points2JGMUp))
+        # # print('jiu的x方向距离',x)
 
 
         # 旧方法，对齐后髁点
@@ -2727,7 +2695,7 @@ class ssmFemur:
         # ang1Point=[point2[0],point2[1],point2[2]]
         # ang2Point=[point2[0],(point3[1]),point2[2]]
         # angle1=self.Angle(ang1Point,ang2Point)
-        # print('angle1',angle1)
+        # # print('angle1',angle1)
         # if 1:
         #     angle1+=1
         #     if point2[1]>point3[1]:
@@ -2735,7 +2703,7 @@ class ssmFemur:
         #     #计算绕Z轴旋angle1度的矩阵
         #     martrix=self.GetMarix_z(angle1)
         #     FtransTmp=np.dot(martrix,FtransTmp)
-        #     print('FtransTmp',FtransTmp)
+        #     # print('FtransTmp',FtransTmp)
         #     FtransTmpInv=np.linalg.inv(FtransTmp)
         #     #更新Femur2JGM及Femur3JGM
         #     for i in range(0,3):
@@ -2757,11 +2725,11 @@ class ssmFemur:
         angel=self.Angle(point1,pointClose)+1
         if (point1[1]>pointClose[1]):
             angel=-angel
-        print('angelNew',angel)
+        # print('angelNew',angel)
         #计算绕Z轴旋angle1度的矩阵
         martrix=self.GetMarix_z(angel)
         FtransTmp=np.dot(martrix,FtransTmp)
-        print('FtransTmp',FtransTmp)
+        # print('FtransTmp',FtransTmp)
         FtransTmpInv=np.linalg.inv(FtransTmp)
         #更新Femur2JGM及Femur3JGM
         for i in range(0,3):
@@ -2784,7 +2752,7 @@ class ssmFemur:
         #判断normal是否与[0,-1,0]同向
         if np.dot(normal,[0,-1,0])<0:
             angel=self.Angle(pointClose1,pointClose)
-            print('angel',angel)
+            # print('angel',angel)
             martrix_x=self.GetMarix_x(angel)
             FtransTmp=np.dot(martrix_x,FtransTmp)
             martrix_x_inv=np.linalg.inv(martrix_x)
@@ -2859,9 +2827,9 @@ class ssmFemur:
             #d6为假体第二刀最上方的点到股骨最近点的距离
             d6=abs(self.getDistance(Femur2JGM1[0].copy()))+abs(self.getDistance(Femur2JGM1[1].copy()))
             diffList.append(d1+d2+d3+d4+d5*0.5+d6*2)
-            # print('d1:',d1,'d2:',d2,'d3:',d3,'d4:',d4,'d5:',d5,'d6:',d6)
+            # # print('d1:',d1,'d2:',d2,'d3:',d3,'d4:',d4,'d5:',d5,'d6:',d6)
 
-        print(diffList)
+        # print(diffList)
         self.minIndex=diffList.index(min(diffList))
         FtransTmp=FtransList[self.minIndex]
         
@@ -2876,7 +2844,7 @@ class ssmFemur:
             [0, 0, 0, 1]])
         newTrans=np.dot(Ftrans1,FtransTmp)
         self.HardModel(newTrans)
-        if self.judge == 'L':
+        if self.judge == 'Ldd':
             #对targetModel进行X方向的镜像处理
             Ftrans = np.array([[-1, 0, 0, 0],
                 [0, 1, 0, 0],
@@ -2921,9 +2889,6 @@ class ssmFemur:
         writer.SetFileName(self.outPutPath + '/Femur111.stl')
         writer.SetInputData(self.polydata)
         writer.Write()
-        writer.SetFileName(self.outPutPath + '/Femur222.stl')
-        writer.SetInputData(self.polydata)
-        writer.Write()
         #markupsNode=slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode','P')
 
         #self.updateLowPoints(newTrans,1)
@@ -2964,9 +2929,9 @@ class ssmFemur:
         z=[0,0,1]
         x=np.dot(xiangliang,z)
 
-        print('x',x)
+        # print('x',x)
         d = self.point2area_distance(np.array(TibiaJGM), point)
-        print('d:',d)
+        # print('d:',d)
         if x > 0:
             d = -d
         distance = 6 + d
@@ -2980,7 +2945,7 @@ class ssmFemur:
             angle_point=(np.array(point)-point1)[0:2]
 
         angle=self.Angle(angle_point,[1,0])
-        print("angle:",angle)
+        # print("angle:",angle)
         if(angle>90):
             angle=180-angle
         if(np.dot(angle_point,[0,1])<0):
@@ -2998,7 +2963,7 @@ class ssmFemur:
                         [0, 0, 1, distance],
                         [0, 0, 0, 1]])
 
-        #print('TtransTmp',TtransTmp,'a',a)
+        ## print('TtransTmp',TtransTmp,'a',a)
         #xzjz = self.GetMarix_z(-2)
         trans = np.dot(TtransTmp,trans_angle)
         TransformTmp.matrix=trans
@@ -3042,7 +3007,7 @@ class ssmFemur:
             inputPoints=[]
             name = 'Tibia-' + list[i]
             lujing = os.path.join(PointPath,name+'.txt')
-            print('lujing',lujing)
+            # print('lujing',lujing)
             point  =  np.loadtxt(lujing)
             judge=1
             if dis.getDistance([0,0,0])>0:
@@ -3482,7 +3447,7 @@ class ssmTibia:
     def onGuGuTouConfirm(self,points):
         points = points.astype(np.float64)  # 防止溢出
         num_points = points.shape[0]
-        print(num_points)
+        # print(num_points)
         x = points[:, 0]
         y = points[:, 1]
         z = points[:, 2]
@@ -3511,7 +3476,7 @@ class ssmTibia:
         b = np.array([xxx_avr - x_avr * xx_avr + xyy_avr - x_avr * yy_avr + xzz_avr - x_avr * zz_avr,
                     xxy_avr - y_avr * xx_avr + yyy_avr - y_avr * yy_avr + yzz_avr - y_avr * zz_avr,
                     xxz_avr - z_avr * xx_avr + yyz_avr - z_avr * yy_avr + zzz_avr - z_avr * zz_avr])
-        # print(A, b)
+        # # print(A, b)
         b = b / 2
         center = np.linalg.solve(A, b)
         x0 = center[0]
@@ -3519,7 +3484,7 @@ class ssmTibia:
         z0 = center[2]
         r2 = xx_avr - 2 * x0 * x_avr + x0 * x0 + yy_avr - 2 * y0 * y_avr + y0 * y0 + zz_avr - 2 * z0 * z_avr + z0 * z0
         r = r2 ** 0.5
-        print(center, r)
+        # print(center, r)
         return center
 
 
@@ -3599,7 +3564,7 @@ class ssmTibia:
             PointNode.AddPoints(np.dot(Ftrans3, point)[0:3])
         self.updateLowPoints(Ftrans3)
 
-        print(FemurHardTrans)
+        # print(FemurHardTrans)
 
 
     def updateLowPoints(self,trans):
@@ -3628,8 +3593,8 @@ class ssmTibia:
         point.RemoveAllPoints()
         point.AddPoints(self.pointsInner[0])
         point = self.myScene.getMarkupsByName('外侧后髁1')
-        print(self.pointsOut[0])
-        print(point.getPoints()[0])
+        # print(self.pointsOut[0])
+        # print(point.getPoints()[0])
         point.RemoveAllPoints()
         point.AddPoints(self.pointsOut[0])
 
@@ -3696,12 +3661,12 @@ class ssmTibia:
         
 
         Ttrans2=np.linalg.inv(Ttrans2)
-        print("Ttrans2",Ttrans2)
+        # print("Ttrans2",Ttrans2)
         Ftransform1 = self.myScene.AddTransform('变换_胫骨临时', Ttrans2)
         Ftransform11 = self.myScene.AddTransform('变换_胫骨约束', Ttrans4)
         Ftransform12 = self.myScene.AddTransform('变换_胫骨调整', Ttrans4)
         Ftransform12.parent = Ftransform11
-        print("self.Ttrans3",Ttrans2)
+        # print("self.Ttrans3",Ttrans2)
 
 
         self.TibiaHardTrans =Ttrans2
@@ -3713,8 +3678,8 @@ class ssmTibia:
         self.WordToReal = np.dot(Ftrans1, Ttrans2)
         #self.TibiaHardTrans = np.dot(Ftrans1, self.TibiaHardTrans)
         #self.TibiaHardTrans = np.dot(Ftrans1, np.dot(self.TibiaHardTrans, Ftrans1))
-        #print("self.Ftrans2", self.Ftrans2)
-        #print("self.Ftrans3",self.Ftrans3)
+        ## print("self.Ftrans2", self.Ftrans2)
+        ## print("self.Ftrans3",self.Ftrans3)
         self.HardModel(self.TibiaHardTrans)
         #model=slicer.util.loadModel(self.FilePath + '/Tibia1.stl')
         writer = vtk.vtkSTLWriter()
@@ -3834,8 +3799,8 @@ class ssmTibia:
         points2JGMUp=(Femur2JGM[0]+Femur2JGM[1])/2
         points2JGMUp[2]=points2JGMUp[2]-self.destance
 
-        # print('新的z方向距离',-self.getDistance(points2JGMUp))
-        # print('jiu的x方向距离',x)
+        # # print('新的z方向距离',-self.getDistance(points2JGMUp))
+        # # print('jiu的x方向距离',x)
 
 
         # 旧方法，对齐后髁点
@@ -3847,7 +3812,7 @@ class ssmTibia:
         # ang1Point=[point2[0],point2[1],point2[2]]
         # ang2Point=[point2[0],(point3[1]),point2[2]]
         # angle1=self.Angle(ang1Point,ang2Point)
-        # print('angle1',angle1)
+        # # print('angle1',angle1)
         # if 1:
         #     angle1+=1
         #     if point2[1]>point3[1]:
@@ -3855,7 +3820,7 @@ class ssmTibia:
         #     #计算绕Z轴旋angle1度的矩阵
         #     martrix=self.GetMarix_z(angle1)
         #     FtransTmp=np.dot(martrix,FtransTmp)
-        #     print('FtransTmp',FtransTmp)
+        #     # print('FtransTmp',FtransTmp)
         #     FtransTmpInv=np.linalg.inv(FtransTmp)
         #     #更新Femur2JGM及Femur3JGM
         #     for i in range(0,3):
@@ -3877,11 +3842,11 @@ class ssmTibia:
         angel=self.Angle(point1,pointClose)+1
         if (point1[1]>pointClose[1]):
             angel=-angel
-        print('angelNew',angel)
+        # print('angelNew',angel)
         #计算绕Z轴旋angle1度的矩阵
         martrix=self.GetMarix_z(angel)
         FtransTmp=np.dot(martrix,FtransTmp)
-        print('FtransTmp',FtransTmp)
+        # print('FtransTmp',FtransTmp)
         FtransTmpInv=np.linalg.inv(FtransTmp)
         #更新Femur2JGM及Femur3JGM
         for i in range(0,3):
@@ -3904,7 +3869,7 @@ class ssmTibia:
         #判断normal是否与[0,-1,0]同向
         if np.dot(normal,[0,-1,0])<0:
             angel=self.Angle(pointClose1,pointClose)
-            print('angel',angel)
+            # print('angel',angel)
             martrix_x=self.GetMarix_x(angel)
             FtransTmp=np.dot(martrix_x,FtransTmp)
             martrix_x_inv=np.linalg.inv(martrix_x)
@@ -3979,9 +3944,9 @@ class ssmTibia:
             #d6为假体第二刀最上方的点到股骨最近点的距离
             d6=abs(self.getDistance(Femur2JGM1[0].copy()))+abs(self.getDistance(Femur2JGM1[1].copy()))
             diffList.append(d1+d2+d3+d4+d5*0.5+d6*2)
-            # print('d1:',d1,'d2:',d2,'d3:',d3,'d4:',d4,'d5:',d5,'d6:',d6)
+            # # print('d1:',d1,'d2:',d2,'d3:',d3,'d4:',d4,'d5:',d5,'d6:',d6)
 
-        print(diffList)
+        # print(diffList)
         self.minIndex=diffList.index(min(diffList))
         FtransTmp=FtransList[self.minIndex]
         
@@ -4050,9 +4015,9 @@ class ssmTibia:
         z=[0,0,1]
         x=np.dot(xiangliang,z)
 
-        print('x',x)
+        # print('x',x)
         d = self.point2area_distance(np.array(TibiaJGM), point)
-        print('d:',d)
+        # print('d:',d)
         if x > 0:
             d = -d
         distance = 6 + d
@@ -4068,7 +4033,7 @@ class ssmTibia:
         if(np.dot(angle_point,[0,1])<0):
             angle=-angle
         trans_angle=self.GetMarix_z(angle)
-        print("angle:",angle)
+        # print("angle:",angle)
 
         point2 = [(point[0]+point1[0]+point3[0])/3,(point[1]+point1[1])/2,(point[2]+point1[2]+point3[2])/3]
 
@@ -4087,7 +4052,7 @@ class ssmTibia:
             inputPoints=[]
             name = 'Tibia-' + nameList[i]
             lujing = os.path.join(PointPath,name+'.txt')
-            print('lujing',lujing)
+            # print('lujing',lujing)
             point  =  np.loadtxt(lujing)
             Ydiff1=point[1][1]-self.getPolyDataPointsByIndex(tibiaIndex[0])[1]
             Ydiff1-=(point[5][1]+point[6][1])/2-(self.getPolyDataPointsByIndex(tibiaIndex[3])[1]+self.getPolyDataPointsByIndex(tibiaIndex[4])[1])/2
@@ -4101,9 +4066,9 @@ class ssmTibia:
         #获取最小值的索引
         minIndex=diffList.index(min(diffList))
         self.jiatiload=minIndex
-        print(self.jiatiload)
+        # print(self.jiatiload)
         #获取最小值
-        print('distance:',centerList[minIndex])
+        # print('distance:',centerList[minIndex])
 
 
 
@@ -4113,7 +4078,7 @@ class ssmTibia:
                         [0, 0, 1, distance],
                         [0, 0, 0, 1]])
 
-        #print('TtransTmp',TtransTmp,'a',a)
+        ## print('TtransTmp',TtransTmp,'a',a)
         #xzjz = self.GetMarix_z(-2)
         trans = np.dot(TtransTmp,trans_angle)
         TransformTmp.matrix=trans
@@ -4145,14 +4110,14 @@ class ssmTibia:
             pnew=np.dot(trans, point)[0:3]*-1
             pointsList.append(list(pnew))
             PointNode.AddPoints(pnew)
-        print("pointsList",pointsList)
+        # print("pointsList",pointsList)
        
         Ftrans = np.array([[1, 0, 0, 0],
                     [0, 1, 0, 0],
                     [0, 0, 1, 0],
                     [0, 0, 0, 1]])
         TransformTmp.matrix=Ftrans
-        if self.judge == 'L':
+        if self.judge == 'Lasd':
             #对targetModel进行X方向的镜像处理
             Ftrans = np.array([[-1, 0, 0, 0],
                 [0, 1, 0, 0],
@@ -4220,7 +4185,7 @@ class ssmTibia:
         #     inputPoints=[]
         #     name = 'Tibia-' + list[i]
         #     lujing = os.path.join(PointPath,name+'.txt')
-        #     print('lujing',lujing)
+        #     # print('lujing',lujing)
         #     point  =  np.loadtxt(lujing)
         #     judge=1
         #     if self.getDistance([0,0,0])>0:
